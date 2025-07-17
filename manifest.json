@@ -1,0 +1,26 @@
+{
+  "manifest_version": 3,
+  "name": "Web Text Extractor",
+  "version": "1.0",
+  "description": "Extract and clean text content from web pages",
+  "content_security_policy": {
+    "extension_pages": "script-src 'self'; object-src 'self'"
+  },
+  "permissions": [
+    "activeTab",
+    "scripting",
+    "downloads",
+    "storage"
+  ],
+  "action": {
+    "default_popup": "popup.html",
+    "default_title": "Extract Text"
+  },
+  "content_scripts": [
+    {
+      "matches": ["<all_urls>"],
+      "js": ["content.js"],
+      "run_at": "document_end"
+    }
+  ]
+} 

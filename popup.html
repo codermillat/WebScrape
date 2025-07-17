@@ -1,0 +1,235 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Web Text Extractor</title>
+  <link rel="stylesheet" href="popup.css">
+</head>
+<body>
+  <div class="container" role="main">
+    <header class="header" role="banner">
+      <h1 id="app-title">Web Text Extractor</h1>
+      <button 
+        id="extractBtn" 
+        class="extract-btn"
+        aria-label="Extract text from current webpage"
+        aria-describedby="extract-help"
+      >
+        Extract Text
+      </button>
+      <div id="extract-help" class="sr-only">
+        Extracts visible text content from the current webpage for processing
+      </div>
+    </header>
+    
+    <section id="settingsDiv" class="settings hidden" role="region" aria-labelledby="settings-title">
+      <h3 id="settings-title">Text Processing Options</h3>
+      <fieldset class="settings-grid" aria-describedby="settings-description">
+        <legend class="sr-only">Text processing configuration options</legend>
+        <div id="settings-description" class="sr-only">
+          Configure how the extracted text should be processed and cleaned
+        </div>
+        
+        <label class="setting-item">
+          <input 
+            type="checkbox" 
+            id="removeDuplicates" 
+            checked
+            aria-describedby="remove-duplicates-help"
+          >
+          <span>Remove Duplicates</span>
+          <div id="remove-duplicates-help" class="sr-only">
+            Remove duplicate sentences from extracted text
+          </div>
+        </label>
+        
+        <label class="setting-item">
+          <input 
+            type="checkbox" 
+            id="removeUrls" 
+            checked
+            aria-describedby="remove-urls-help"
+          >
+          <span>Remove URLs</span>
+          <div id="remove-urls-help" class="sr-only">
+            Remove web addresses and links from text
+          </div>
+        </label>
+        
+        <label class="setting-item">
+          <input 
+            type="checkbox" 
+            id="removeNumbers"
+            aria-describedby="remove-numbers-help"
+          >
+          <span>Remove Numbers</span>
+          <div id="remove-numbers-help" class="sr-only">
+            Remove numeric values from extracted text
+          </div>
+        </label>
+        
+        <label class="setting-item">
+          <input 
+            type="checkbox" 
+            id="removeStopWords" 
+            checked
+            aria-describedby="remove-stopwords-help"
+          >
+          <span>Remove Stop Words</span>
+          <div id="remove-stopwords-help" class="sr-only">
+            Remove common words like 'the', 'and', 'or' from text
+          </div>
+        </label>
+        
+        <label class="setting-item">
+          <input 
+            type="checkbox" 
+            id="extractSections" 
+            checked
+            aria-describedby="extract-sections-help"
+          >
+          <span>Extract Sections</span>
+          <div id="extract-sections-help" class="sr-only">
+            Organize text into sections like title, content, and navigation
+          </div>
+        </label>
+        
+        <label class="setting-item">
+          <input 
+            type="checkbox" 
+            id="extractKeyPhrases" 
+            checked
+            aria-describedby="extract-phrases-help"
+          >
+          <span>Extract Key Phrases</span>
+          <div id="extract-phrases-help" class="sr-only">
+            Identify and extract important phrases from the text
+          </div>
+        </label>
+      </fieldset>
+      
+      <div class="output-format" role="group" aria-labelledby="format-label">
+        <label id="format-label" for="outputFormat">Output Format:</label>
+        <select 
+          id="outputFormat" 
+          aria-describedby="format-help"
+        >
+          <option value="raw">Raw Text</option>
+          <option value="clean" selected>Clean Text</option>
+          <option value="llm">LLM Format</option>
+          <option value="json">JSON Format</option>
+        </select>
+        <div id="format-help" class="sr-only">
+          Choose how the processed text should be formatted for output
+        </div>
+      </div>
+      
+      <div class="save-location" role="group" aria-labelledby="location-label">
+        <label id="location-label" for="saveLocation">Save Location:</label>
+        <select 
+          id="saveLocation"
+          aria-describedby="location-help"
+        >
+          <option value="downloads">Downloads Folder</option>
+          <option value="custom">Choose Custom Folder</option>
+        </select>
+        <div id="location-help" class="sr-only">
+          Select where to save the extracted text file
+        </div>
+      </div>
+      
+      <div id="customPathGroup" class="custom-path hidden" role="group" aria-labelledby="custom-path-label">
+        <label id="custom-path-label" for="customPath">Custom Folder:</label>
+        <div class="path-input-group">
+          <input 
+            type="text" 
+            id="customPath" 
+            placeholder="Select a folder..." 
+            readonly
+            aria-describedby="path-help"
+          >
+          <button 
+            type="button" 
+            id="browsePathBtn" 
+            class="browse-btn"
+            aria-label="Browse for custom save folder"
+          >
+            Browse
+          </button>
+        </div>
+        <small id="path-help" class="path-help">Files will be saved to the selected folder</small>
+      </div>
+    </section>
+    
+    <main class="main">
+      <div id="loadingDiv" class="loading hidden">
+        <div class="spinner"></div>
+        <span>Extracting text...</span>
+      </div>
+      
+      <div id="errorDiv" class="error hidden">
+        <span id="errorMessage"></span>
+      </div>
+      
+      <div id="contentDiv" class="content hidden">
+        <div class="stats">
+          <span id="wordCount">0 words</span>
+          <span id="charCount">0 characters</span>
+        </div>
+        
+        <textarea 
+          id="extractedText" 
+          class="text-area" 
+          readonly 
+          placeholder="Extracted text will appear here..."
+        ></textarea>
+        
+        <div class="actions">
+          <button id="settingsBtn" class="btn btn-settings">
+            <svg width="16" height="16" viewBox="0 0 24 24" fill="currentColor">
+              <path d="M19.14,12.94c0.04-0.3,0.06-0.61,0.06-0.94c0-0.32-0.02-0.64-0.07-0.94l2.03-1.58c0.18-0.14,0.23-0.41,0.12-0.61 l-1.92-3.32c-0.12-0.22-0.37-0.29-0.59-0.22l-2.39,0.96c-0.5-0.38-1.03-0.7-1.62-0.94L14.4,2.81c-0.04-0.24-0.24-0.41-0.48-0.41 h-3.84c-0.24,0-0.43,0.17-0.47,0.41L9.25,5.35C8.66,5.59,8.12,5.92,7.63,6.29L5.24,5.33c-0.22-0.08-0.47,0-0.59,0.22L2.74,8.87 C2.62,9.08,2.66,9.34,2.86,9.48l2.03,1.58C4.84,11.36,4.82,11.69,4.82,12s0.02,0.64,0.07,0.94l-2.03,1.58 c-0.18,0.14-0.23,0.41-0.12,0.61l1.92,3.32c0.12,0.22,0.37,0.29,0.59,0.22l2.39-0.96c0.5,0.38,1.03,0.7,1.62,0.94l0.36,2.54 c0.05,0.24,0.24,0.41,0.48,0.41h3.84c0.24,0,0.44-0.17,0.47-0.41l0.36-2.54c0.59-0.24,1.13-0.56,1.62-0.94l2.39,0.96 c0.22,0.08,0.47,0,0.59-0.22l1.92-3.32c0.12-0.22,0.07-0.47-0.12-0.61L19.14,12.94z M12,15.6c-1.98,0-3.6-1.62-3.6-3.6 s1.62-3.6,3.6-3.6s3.6,1.62,3.6,3.6S13.98,15.6,12,15.6z"/>
+            </svg>
+            Settings
+          </button>
+          
+          <button id="copyBtn" class="btn btn-primary">
+            <svg width="16" height="16" viewBox="0 0 24 24" fill="currentColor">
+              <path d="M16 1H4c-1.1 0-2 .9-2 2v14h2V3h12V1zm3 4H8c-1.1 0-2 .9-2 2v14c0 1.1.9 2 2 2h11c1.1 0 2-.9 2-2V7c0-1.1-.9-2-2-2zm0 16H8V7h11v14z"/>
+            </svg>
+            Copy All
+          </button>
+          
+          <button id="downloadBtn" class="btn btn-secondary">
+            <svg width="16" height="16" viewBox="0 0 24 24" fill="currentColor">
+              <path d="M19 9h-4V3H9v6H5l7 7 7-7zM5 18v2h14v-2H5z"/>
+            </svg>
+            Download
+          </button>
+          
+          <button id="clearBtn" class="btn btn-tertiary">
+            <svg width="16" height="16" viewBox="0 0 24 24" fill="currentColor">
+              <path d="M6 19c0 1.1.9 2 2 2h8c1.1 0 2-.9 2-2V7H6v12zM19 4h-3.5l-1-1h-5l-1 1H5v2h14V4z"/>
+            </svg>
+            Clear
+          </button>
+        </div>
+      </div>
+      
+      <div id="welcomeDiv" class="welcome">
+        <div class="welcome-icon">
+          <svg width="48" height="48" viewBox="0 0 24 24" fill="currentColor">
+            <path d="M14 2H6c-1.1 0-1.99.9-1.99 2L4 20c0 1.1.89 2 2 2h10c1.1 0 2-.9 2-2V8l-4-6zm2 16H8v-2h8v2zm0-4H8v-2h8v2zm-3-5V3.5L18.5 9H13z"/>
+          </svg>
+        </div>
+        <h2>Web Text Extractor</h2>
+        <p>Extract clean text from any webpage. Click "Extract Text" to begin.</p>
+        <p style="font-size: 12px; margin-top: 8px; color: #888;">Works on most websites except Chrome system pages.</p>
+      </div>
+    </main>
+  </div>
+  
+  <script src="text-processor.js"></script>
+  <script src="popup.js"></script>
+</body>
+</html> 
