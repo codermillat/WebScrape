@@ -174,6 +174,45 @@
         </div>
       </div>
 
+      <div class="settings-grid" aria-label="Full-page extraction options">
+        <label class="setting-item">
+          <input 
+            type="checkbox" 
+            id="fullPageExtract"
+            aria-describedby="fullpage-help"
+          >
+          <span>Full-Page Structured Extract</span>
+          <div id="fullpage-help" class="sr-only">
+            Extract full-page content structured into sections with metadata
+          </div>
+        </label>
+
+        <label class="setting-item">
+          <input 
+            type="checkbox" 
+            id="excludeBoilerplate"
+            aria-describedby="exclude-boilerplate-help"
+          >
+          <span>Exclude Boilerplate</span>
+          <div id="exclude-boilerplate-help" class="sr-only">
+            Skip headers, footers, navigation and ads when extracting
+          </div>
+        </label>
+
+        <label class="setting-item">
+          <input 
+            type="checkbox" 
+            id="includeMetadataToggle"
+            checked
+            aria-describedby="include-metadata-help"
+          >
+          <span>Include Metadata</span>
+          <div id="include-metadata-help" class="sr-only">
+            Include meta description and Open Graph tags
+          </div>
+        </label>
+      </div>
+
       <div class="output-format" role="group" aria-labelledby="ai-toggle-label">
         <label id="ai-toggle-label" for="enableAiToggle">Enable AI Features:</label>
         <input type="checkbox" id="enableAiToggle" aria-describedby="ai-toggle-help">
@@ -234,6 +273,16 @@
         <div class="stats">
           <span id="wordCount">0 words</span>
           <span id="charCount">0 characters</span>
+        </div>
+        <div id="formatSwitch" class="format-switch" role="tablist" aria-label="Output format switch">
+          <button type="button" class="pill active" data-format="clean" role="tab" aria-selected="true">Clean</button>
+          <button type="button" class="pill" data-format="raw" role="tab" aria-selected="false">Raw</button>
+          <button type="button" class="pill" data-format="llm" role="tab" aria-selected="false">Structured</button>
+            <button type="button" class="pill" data-format="json" role="tab" aria-selected="false">JSON</button>
+        </div>
+        <div id="llmProgress" class="progress hidden" aria-live="polite">
+          <div class="bar indeterminate" id="llmProgressBar"></div>
+          <span id="llmProgressLabel" class="progress-label">Working...</span>
         </div>
         
         <textarea 
@@ -302,4 +351,4 @@
     </div>
   </div>
 </body>
-</html> 
+</html>

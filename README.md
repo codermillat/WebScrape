@@ -25,6 +25,7 @@ A powerful Chrome extension that extracts and preprocesses webpage content for L
 - **Clean Text**: Preprocessed and deduplicated
 - **LLM Format**: Structured for language model training
 - **JSON Format**: Machine-readable structured data
+- **Full-Page Structured Extract (Text)**: Human-readable `.txt` with labeled sections (Title, Metadata, Headings, Paragraphs, Lists, Tables, Links, Images)
 
 ### ⚙️ **Customizable Processing**
 - Toggleable preprocessing options
@@ -167,6 +168,9 @@ The extension provides detailed analytics:
 | Remove Stop Words | Filter common words | ✅ ON |
 | Include Hidden Elements | Include non-visible elements in extraction | ❌ OFF |
 | Auto-scroll Page | Scroll to load lazy content before extraction | ❌ OFF |
+| Full-Page Structured Extract | Extract full-page content into labeled sections | ❌ OFF |
+| Exclude Boilerplate | Skip header/nav/footer/ads when extracting | ❌ OFF |
+| Include Metadata | Include meta description and Open Graph tags | ✅ ON |
 | Extract Sections | Categorize content types | ✅ ON |
 | Extract Key Phrases | Identify important topics | ✅ ON |
 

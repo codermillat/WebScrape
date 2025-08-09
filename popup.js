@@ -42,6 +42,57 @@
     get customPath() { return safeGetElement('customPath'); },
     get browsePathBtn() { return safeGetElement('browsePathBtn'); }
   };
+  // Progress & size guard utilities
+  const MAX_INPUT_CHARS = 750000; // ~0.75 MB safeguard
+
+  function applySizeGuard() {
+    if (!rawContent) return { truncated: false, original: 0, used: 0 };
+    const original = rawContent.length;
+    if (original <= MAX_INPUT_CHARS) return { truncated: false, original, used: original };
+    rawContent = rawContent.slice(0, MAX_INPUT_CHARS) +
+      `\n\n[TRUNCATED at ${MAX_INPUT_CHARS.toLocaleString()} chars of ${original.toLocaleString()}]`;
+    return { truncated: true, original, used: rawContent.length };
+  }
+
+  function showProgress(label = 'Working...') {
+    const c = document.getElementById('llmProgress');
+    if (!c) return;
+    c.classList.remove('hidden');
+    const bar = document.getElementById('llmProgressBar');
+    if (bar) {
+      bar.classList.add('indeterminate');
+      bar.style.width = '40%';
+    }
+    const l = document.getElementById('llmProgressLabel');
+    if (l) l.textContent = label;
+  }
+
+  function updateProgress(phase, index, total) {
+    const bar = document.getElementById('llmProgressBar');
+    const l = document.getElementById('llmProgressLabel');
+    if (!bar || !l) return;
+    if (total && total > 1) {
+      const pct = Math.min(100, Math.round(index / total * 100));
+      bar.classList.remove('indeterminate');
+      bar.style.width = pct + '%';
+      l.textContent = (phase === 'synthesis')
+        ? 'Synthesizing...'
+        : `Processing chunk ${index}/${total}`;
+    } else {
+      l.textContent = (phase === 'synthesis') ? 'Synthesizing...' : 'Processing...';
+    }
+  }
+
+  function hideProgress() {
+    const c = document.getElementById('llmProgress');
+    if (!c) return;
+    c.classList.add('hidden');
+    const bar = document.getElementById('llmProgressBar');
+    if (bar) {
+      bar.style.width = '0';
+      bar.classList.remove('indeterminate');
+    }
+  }
 
   // State
   let extractedContent = '';
@@ -157,6 +208,44 @@
     return out.join('\n');
   }
 
+  // Structured LLM prompt (replaces previous generic cleaner)
+  async function buildStructuredPrompt(raw, meta, tables = []) {
+    const prepared = stripCodeLikeLines(raw || '');
+    const tablesTXT = (tables && tables.length)
+      ? tables.map((t,i)=>`--TABLE ${i+1}--\n${t.rows.map(r=>r.join(' | ')).join('\n')}`).join('\n')
+      : '';
+    return `Return PLAIN TEXT ONLY. Do NOT fabricate. Extract ONLY data explicitly present.
+Sections (omit if absent) in this exact order:
+RANKING
+COURSES
+FEES
+ELIGIBILITY
+ADMISSION PROCESS
+SCHOLARSHIPS
+PAYMENTS
+VISA_FRRO
+CONTACT
+NOTES
+Rules:
+- Keep INR amounts and semester/year labels.
+- Merge duplicates.
+- Retain emails / phone numbers (contact section).
+- Skip menus, navigation, ads, scripts, boilerplate.
+- If a section is absent, DO NOT create it.
+End with:
+Source: ${meta.url}
+
+TITLE: ${meta.title || 'Webpage'}
+URL: ${meta.url}
+
+TABLES (flattened):
+${tablesTXT}
+
+CONTENT START
+${prepared}
+CONTENT END`;
+  }
+
   // Load API keys securely from storage
   async function getApiKeys() {
     try {
@@ -167,14 +256,56 @@
     }
   }
 
+  // Utility helpers for domain allowlist, hashing, filenames
+  function isAllowedDomain(u) {
+    try {
+      const h = new URL(u).hostname.toLowerCase();
+      return /(sharda\.ac\.in|amity\.edu|galgotiasuniversity\.edu\.in|niu\.edu\.in|noidainternationaluniversity\.com)/.test(h);
+    } catch (_) { return false; }
+  }
+  async function sha256Hex(str) {
+    const enc = new TextEncoder().encode(str);
+    const buf = await crypto.subtle.digest('SHA-256', enc);
+    return Array.from(new Uint8Array(buf)).map(b=>b.toString(16).padStart(2,'0')).join('');
+  }
+  function slugify(base) {
+    return (base || '')
+      .toLowerCase()
+      .replace(/https?:\/\//,'')
+      .replace(/[^a-z0-9]+/g,'_')
+      .replace(/^_+|_+$/g,'')
+      .replace(/_{2,}/g,'_')
+      .slice(0,60) || 'page';
+  }
+  function deriveFileBasename(url, title) {
+    let host = 'site';
+    try { host = new URL(url).hostname.replace(/^www\./,''); } catch(_){}
+    const slug = slugify(title || url);
+    return `${host}_${slug}`;
+  }
+  async function saveDualOutputs(meta, cleanedText, structuredText) {
+    try {
+      const base = deriveFileBasename(meta.url, meta.title);
+      const hashClean = await sha256Hex(cleanedText || '');
+      const hashStruct = await sha256Hex(structuredText || '');
+      const cleanOut = `${cleanedText.trim()}\n\nSource: ${meta.url}\nHASH: ${hashClean}`;
+      const structOut = `${structuredText.trim()}\n\nSource: ${meta.url}\nHASH: ${hashStruct}`;
+      // Download both via background
+      await chrome.runtime.sendMessage({ type: 'downloadText', filename: `${base}_clean.txt`, text: cleanOut });
+      await chrome.runtime.sendMessage({ type: 'downloadText', filename: `${base}_structured.txt`, text: structOut });
+    } catch (e) {
+      Logger.warn('saveDualOutputs failed', { error: e.message });
+    }
+  }
+
   // Gemini API client (keys loaded at runtime from chrome.storage)
   const GeminiClient = (() => {
     // Prefer latest, then stable fallbacks
     const MODELS = ['gemini-2.5-pro', 'gemini-2.5-flash', 'gemini-1.5-pro', 'gemini-1.5-flash', 'gemini-2.0-flash'];
     const BASE_URL = 'https://generativelanguage.googleapis.com/v1beta/models/';
-    const TIMEOUT_MS = 25000;
-    const MAX_CHARS_PER_CHUNK = 40000; // smaller chunks for large pages
-    const MAX_RETRIES = 2; // per model
+    const TIMEOUT_MS = 6000;
+    const MAX_CHARS_PER_CHUNK = 12000; // smaller chunks for speed
+    const MAX_RETRIES = 1; // faster fallback
 
     async function endpoint(model) {
       const { geminiApiKey } = await getApiKeys();
@@ -194,7 +325,7 @@
         contents: [{ role: 'user', parts: [{ text: prompt }] }],
         generationConfig: {
           temperature: 0.2,
-          maxOutputTokens: 8192,
+          maxOutputTokens: 1024,
           responseMimeType: 'text/plain'
         }
       };
@@ -244,25 +375,34 @@
       let prepared = stripCodeLikeLines(raw || '');
       if (prepared.length > 300000) prepared = prepared.slice(0, 300000);
       const tablesJSON = tables && tables.length ? JSON.stringify(tables).slice(0, 60000) : '[]';
+
+      async function processInChunks(maxCharsPerChunk) {
+        const chunks = [];
+        for (let i = 0; i < prepared.length; i += maxCharsPerChunk) {
+          chunks.push(prepared.slice(i, i + maxCharsPerChunk));
+        }
+        const cleanedSegments = [];
+        for (let i = 0; i < chunks.length; i++) {
+          if (typeof onProgress === 'function') onProgress({ phase: 'chunk', index: i + 1, total: chunks.length });
+          const segment = await callWithRetry(buildChunkPrompt(chunks[i], meta, tablesJSON, i + 1, chunks.length));
+          cleanedSegments.push(segment);
+        }
+        if (typeof onProgress === 'function') onProgress({ phase: 'synthesis' });
+        return callWithRetry(buildSynthesisPrompt(cleanedSegments, meta));
+      }
+
       if (!prepared || prepared.length <= MAX_CHARS_PER_CHUNK) {
         const prompt = buildChunkPrompt(prepared, meta, tablesJSON, 1, 1);
         if (typeof onProgress === 'function') onProgress({ phase: 'chunk', index: 1, total: 1 });
-        return callWithRetry(prompt);
+        try {
+          return await callWithRetry(prompt);
+        } catch (_) {
+          const smaller = Math.max(Math.floor(MAX_CHARS_PER_CHUNK * 0.66), 4000);
+          return processInChunks(smaller);
+        }
       }
 
-      // Chunk then synthesize
-      const chunks = [];
-      for (let i = 0; i < prepared.length; i += MAX_CHARS_PER_CHUNK) {
-        chunks.push(prepared.slice(i, i + MAX_CHARS_PER_CHUNK));
-      }
-      const cleanedSegments = [];
-      for (let i = 0; i < chunks.length; i++) {
-        if (typeof onProgress === 'function') onProgress({ phase: 'chunk', index: i + 1, total: chunks.length });
-        const segment = await callWithRetry(buildChunkPrompt(chunks[i], meta, tablesJSON, i + 1, chunks.length));
-        cleanedSegments.push(segment);
-      }
-      if (typeof onProgress === 'function') onProgress({ phase: 'synthesis' });
-      return callWithRetry(buildSynthesisPrompt(cleanedSegments, meta));
+      return processInChunks(MAX_CHARS_PER_CHUNK);
     }
 
     return { organizeText };
@@ -272,9 +412,9 @@
   const DOClient = (() => {
     const ENDPOINT = 'https://inference.do-ai.run/v1/chat/completions';
     const MODEL = 'llama3.3-70b-instruct';
-    const TIMEOUT_MS = 25000;
-    const MAX_CHARS_PER_CHUNK = 40000;
-    const MAX_RETRIES = 2;
+    const TIMEOUT_MS = 6000;
+    const MAX_CHARS_PER_CHUNK = 12000; // speed
+    const MAX_RETRIES = 1;
 
     function fetchWithTimeoutDo(url, options = {}, timeoutMs = TIMEOUT_MS) {
       const controller = new AbortController();
@@ -289,7 +429,7 @@
         model: MODEL,
         messages: [{ role: 'user', content: prompt }],
         temperature: 0.2,
-        max_tokens: 8192
+        max_tokens: 1024
       };
       const res = await fetchWithTimeoutDo(ENDPOINT, {
         method: 'POST',
@@ -320,6 +460,7 @@
         }
       }
     }
+    async function generateText(prompt) { return callWithRetry(prompt); }
 
     function buildChunkPrompt(chunk, meta, tablesJSON, idx, total) {
       return `You are a data cleaning assistant. Clean and organize this webpage extraction CHUNK ${idx}/${total}.\n\nGuidelines:\n- Keep only domain-relevant facts; remove menus/nav/ads.\n- Ignore any code, JavaScript/CSS, variable names or minified tokens.\n- Preserve numeric values and currency as written.\n- Convert fee tables to clear bullet lists.\n- Return plain text only.\n\nTITLE: ${meta.title || 'Webpage'}\nURL: ${meta.url}\n\nTABLES(JSON):\n${tablesJSON}\n\nRAW CHUNK ${idx}/${total}:\n${chunk}`;
@@ -333,27 +474,42 @@
       let prepared = stripCodeLikeLines(raw || '');
       if (prepared.length > 300000) prepared = prepared.slice(0, 300000);
       const tablesJSON = tables && tables.length ? JSON.stringify(tables).slice(0, 60000) : '[]';
+
+      // Helper to process as chunks with a given size
+      async function processInChunks(maxCharsPerChunk) {
+        const chunks = [];
+        for (let i = 0; i < prepared.length; i += maxCharsPerChunk) {
+          chunks.push(prepared.slice(i, i + maxCharsPerChunk));
+        }
+        const cleanedSegments = [];
+        for (let i = 0; i < chunks.length; i++) {
+          if (typeof onProgress === 'function') onProgress({ phase: 'chunk', index: i + 1, total: chunks.length });
+          const segmentPrompt = buildChunkPrompt(chunks[i], meta, tablesJSON, i + 1, chunks.length);
+          const segment = await callWithRetry(segmentPrompt);
+          cleanedSegments.push(segment);
+        }
+        if (typeof onProgress === 'function') onProgress({ phase: 'synthesis' });
+        return callWithRetry(buildSynthesisPrompt(cleanedSegments, meta));
+      }
+
+      // Single-shot if small enough; fallback to chunking if it fails for any reason
       if (!prepared || prepared.length <= MAX_CHARS_PER_CHUNK) {
         const prompt = buildChunkPrompt(prepared, meta, tablesJSON, 1, 1);
         if (typeof onProgress === 'function') onProgress({ phase: 'chunk', index: 1, total: 1 });
-        return callWithRetry(prompt);
+        try {
+          return await callWithRetry(prompt);
+        } catch (e) {
+          // Fallback: try chunked flow with a smaller chunk size to avoid token/timeout issues
+          const smaller = Math.max(Math.floor(MAX_CHARS_PER_CHUNK * 0.66), 4000);
+          return processInChunks(smaller);
+        }
       }
 
-      const chunks = [];
-      for (let i = 0; i < prepared.length; i += MAX_CHARS_PER_CHUNK) {
-        chunks.push(prepared.slice(i, i + MAX_CHARS_PER_CHUNK));
-      }
-      const cleanedSegments = [];
-      for (let i = 0; i < chunks.length; i++) {
-        if (typeof onProgress === 'function') onProgress({ phase: 'chunk', index: i + 1, total: chunks.length });
-        const segment = await callWithRetry(buildChunkPrompt(chunks[i], meta, tablesJSON, i + 1, chunks.length));
-        cleanedSegments.push(segment);
-      }
-      if (typeof onProgress === 'function') onProgress({ phase: 'synthesis' });
-      return callWithRetry(buildSynthesisPrompt(cleanedSegments, meta));
+      // Already large → chunked path
+      return processInChunks(MAX_CHARS_PER_CHUNK);
     }
 
-    return { organizeText };
+    return { organizeText, generateText };
   })();
   // Generic fetch with timeout for robust network calls
   async function fetchWithTimeout(url, options = {}, timeoutMs = 15000) {
@@ -676,6 +832,9 @@
       currentUrl = tab.url;
       currentTitle = tab.title || '';
       Logger.info('Attempting extraction from URL', { url: currentUrl });
+      if (!isAllowedDomain(currentUrl)) {
+        throw new Error('Domain not in allowlist (target universities only)');
+      }
 
       // Special case: view-source pages - fetch original HTML and parse in popup
       if (currentUrl.startsWith('view-source:')) {
@@ -769,17 +928,28 @@
       // Read extraction options
       const includeHidden = !!document.getElementById('includeHidden')?.checked;
       const autoScroll = !!document.getElementById('autoScroll')?.checked;
+      const fullPage = !!document.getElementById('fullPageExtract')?.checked;
+      const excludeBoilerplate = !!document.getElementById('excludeBoilerplate')?.checked;
+      const includeMetadata = !!document.getElementById('includeMetadataToggle')?.checked;
 
       // Persist extraction preferences
-      chrome.storage.local.set({ ui_includeHidden: includeHidden, ui_autoScroll: autoScroll });
+      chrome.storage.local.set({
+        ui_includeHidden: includeHidden,
+        ui_autoScroll: autoScroll,
+        ui_fullPage: fullPage,
+        ui_excludeBoilerplate: excludeBoilerplate,
+        ui_includeMetadata: includeMetadata
+      });
 
       // Send extraction message with extended timeout (with HTML fetch fallback)
-      Logger.info('Sending extraction request to content script');
+      Logger.info(fullPage ? 'Sending structured extraction request' : 'Sending extraction request to content script');
       let response;
       try {
         response = await Promise.race([
-          chrome.tabs.sendMessage(tab.id, { action: 'extractText', includeHidden, autoScroll }),
-          new Promise((_, reject) => setTimeout(() => reject(new Error('Extraction timeout - page took too long to respond')), 15000))
+          fullPage
+            ? chrome.tabs.sendMessage(tab.id, { action: 'extractStructured', includeHidden, autoScroll, excludeBoilerplate, includeMetadata })
+            : chrome.tabs.sendMessage(tab.id, { action: 'extractText', includeHidden, autoScroll }),
+          new Promise((_, reject) => setTimeout(() => reject(new Error('Extraction timeout - page took too long to respond')), 20000))
         ]);
         if (!response) throw new Error('No response from content script');
         if (!response.success) throw new Error(response.error || 'Content script reported failure');
@@ -809,6 +979,12 @@
         url: currentUrl 
       });
       
+      // Size guard (truncate very large content with notice)
+      const sizeMeta = applySizeGuard();
+      if (sizeMeta.truncated) {
+        Logger.warn('Content truncated due to size guard', sizeMeta);
+      }
+
       // Process the content with current settings (use chunking for large texts)
       const options = getProcessingOptions();
       
@@ -1300,7 +1476,19 @@
       const result = await chrome.storage.local.get([
         'saveLocation',
         'customSavePath',
-        'hasCustomFolder'
+        'hasCustomFolder',
+        'ui_removeDuplicates',
+        'ui_removeUrls',
+        'ui_removeNumbers',
+        'ui_removeStopWords',
+        'ui_extractSections',
+        'ui_extractKeyPhrases',
+        'ui_includeHidden',
+        'ui_autoScroll',
+        'ui_outputFormat',
+        'ui_fullPage',
+        'ui_excludeBoilerplate',
+        'ui_includeMetadata'
       ]);
       
       if (result.saveLocation) {
@@ -1321,7 +1509,25 @@
           Logger.info('Custom directory handle restored');
         }
       }
-      
+      // Apply UI settings if present
+      if (elements.removeDuplicates && typeof result.ui_removeDuplicates === 'boolean') elements.removeDuplicates.checked = result.ui_removeDuplicates;
+      if (elements.removeUrls && typeof result.ui_removeUrls === 'boolean') elements.removeUrls.checked = result.ui_removeUrls;
+      if (elements.removeNumbers && typeof result.ui_removeNumbers === 'boolean') elements.removeNumbers.checked = result.ui_removeNumbers;
+      if (elements.removeStopWords && typeof result.ui_removeStopWords === 'boolean') elements.removeStopWords.checked = result.ui_removeStopWords;
+      if (elements.extractSections && typeof result.ui_extractSections === 'boolean') elements.extractSections.checked = result.ui_extractSections;
+      if (elements.extractKeyPhrases && typeof result.ui_extractKeyPhrases === 'boolean') elements.extractKeyPhrases.checked = result.ui_extractKeyPhrases;
+      const includeHiddenEl = document.getElementById('includeHidden');
+      const autoScrollEl = document.getElementById('autoScroll');
+      if (includeHiddenEl && typeof result.ui_includeHidden === 'boolean') includeHiddenEl.checked = result.ui_includeHidden;
+      if (autoScrollEl && typeof result.ui_autoScroll === 'boolean') autoScrollEl.checked = result.ui_autoScroll;
+      if (elements.outputFormat && typeof result.ui_outputFormat === 'string') elements.outputFormat.value = result.ui_outputFormat;
+      const fullPageEl = document.getElementById('fullPageExtract');
+      const excludeBoilerEl = document.getElementById('excludeBoilerplate');
+      const includeMetaEl = document.getElementById('includeMetadataToggle');
+      if (fullPageEl && typeof result.ui_fullPage === 'boolean') fullPageEl.checked = result.ui_fullPage;
+      if (excludeBoilerEl && typeof result.ui_excludeBoilerplate === 'boolean') excludeBoilerEl.checked = result.ui_excludeBoilerplate;
+      if (includeMetaEl && typeof result.ui_includeMetadata === 'boolean') includeMetaEl.checked = result.ui_includeMetadata;
+
     } catch (error) {
       console.error('Error loading preferences:', error);
     }
@@ -1367,6 +1573,7 @@
       
       // Show welcome view initially
       showView('welcome');
+      initFormatPills();
 
       // Safe event listener binding
       bindEventListeners();
@@ -1402,6 +1609,33 @@
   /**
    * Bind event listeners with null safety
    */
+  function initFormatPills() {
+    const pills = Array.from(document.querySelectorAll('.format-switch .pill'));
+    if (!pills.length || !elements.outputFormat) return;
+    function activate(fmt) {
+      pills.forEach(p => {
+        const f = p.getAttribute('data-format');
+        p.classList.toggle('active', f === fmt);
+        p.setAttribute('aria-selected', f === fmt ? 'true' : 'false');
+      });
+      if (elements.outputFormat.value !== fmt) {
+        elements.outputFormat.value = fmt;
+        handleOutputFormatChange();
+      } else {
+        updateDisplayedContent();
+      }
+    }
+    pills.forEach(p => {
+      p.addEventListener('click', () => {
+        const fmt = p.getAttribute('data-format');
+        if (!fmt) return;
+        activate(fmt);
+      });
+    });
+    // Initialize to current select value
+    activate(elements.outputFormat.value || 'clean');
+  }
+
   function bindEventListeners() {
     // Primary action listeners
     if (elements.extractBtn) {
@@ -1416,7 +1650,7 @@
       headerDownloadBtn.addEventListener('click', debounce(downloadAsFile, 500));
     }
     if (elements.settingsBtn) {
-      elements.settingsBtn.addEventListener('click', toggleSettings);
+      elements.settingsBtn.addEventListener('click', () => chrome.runtime.openOptionsPage());
     }
     if (elements.copyBtn) {
       elements.copyBtn.addEventListener('click', debounce(copyToClipboard, 300));
@@ -1457,6 +1691,14 @@
     if (elements.outputFormat) {
       elements.outputFormat.addEventListener('change', handleOutputFormatChange);
     }
+
+    // Full-page extraction toggles
+    const fullPageEl = document.getElementById('fullPageExtract');
+    const excludeBoilerEl = document.getElementById('excludeBoilerplate');
+    const includeMetaEl = document.getElementById('includeMetadataToggle');
+    if (fullPageEl) fullPageEl.addEventListener('change', saveFullPagePreferences);
+    if (excludeBoilerEl) excludeBoilerEl.addEventListener('change', saveFullPagePreferences);
+    if (includeMetaEl) includeMetaEl.addEventListener('change', saveFullPagePreferences);
     
     // Settings checkboxes with debouncing
     [elements.removeDuplicates, elements.removeUrls, elements.removeNumbers,
@@ -1525,6 +1767,12 @@
     try {
       const fmt = elements.outputFormat?.value || 'clean';
       chrome.storage.local.set({ ui_outputFormat: fmt });
+      const pills = document.querySelectorAll('.format-switch .pill');
+      pills.forEach(p => {
+        const f = p.getAttribute('data-format');
+        p.classList.toggle('active', f === fmt);
+        p.setAttribute('aria-selected', f === fmt ? 'true' : 'false');
+      });
     } catch (_) {}
     updateDisplayedContent();
   }
@@ -1545,6 +1793,15 @@
     };
     chrome.storage.local.set(prefs);
   }
+
+  function saveFullPagePreferences() {
+    const prefs = {
+      ui_fullPage: !!document.getElementById('fullPageExtract')?.checked,
+      ui_excludeBoilerplate: !!document.getElementById('excludeBoilerplate')?.checked,
+      ui_includeMetadata: !!document.getElementById('includeMetadataToggle')?.checked
+    };
+    chrome.storage.local.set(prefs);
+  }
   async function organizeWithAI() {
     try {
       if (!rawContent || rawContent.trim().length === 0) {
@@ -1553,48 +1810,39 @@
       }
       showView('loading');
       const lt = document.getElementById('loadingText');
-      if (lt) lt.textContent = 'Organizing with Gemini...';
+      if (lt) lt.textContent = 'Organizing (fast mode)...';
+      showProgress('Organizing (fast mode)...');
       const meta = { title: currentTitle, url: currentUrl };
       let organized;
       try {
-        organized = await GeminiClient.organizeText(
-          rawContent,
-          meta,
-          lastExtractedTables,
-          (progress) => {
-            const el = document.getElementById('loadingText');
-            if (!el || !progress) return;
-            if (progress.phase === 'chunk') {
-              el.textContent = `Cleaning content ${progress.index}/${progress.total}...`;
-            } else if (progress.phase === 'synthesis') {
-              el.textContent = 'Synthesizing final output...';
-            }
-          }
-        );
-      } catch (gemErr) {
-        Logger.warn('Gemini failed, falling back to DO LLM', { error: gemErr.message });
-        if (lt) lt.textContent = 'Gemini failed. Organizing with Llama (DO)...';
-        organized = await DOClient.organizeText(
-          rawContent,
-          meta,
-          lastExtractedTables,
-          (progress) => {
-            const el = document.getElementById('loadingText');
-            if (!el || !progress) return;
-            if (progress.phase === 'chunk') {
-              el.textContent = `Cleaning content ${progress.index}/${progress.total}...`;
-            } else if (progress.phase === 'synthesis') {
-              el.textContent = 'Synthesizing final output...';
-            }
-          }
-        );
+        const pagePrompt = await buildStructuredPrompt(rawContent, meta, lastExtractedTables);
+        const doResp = await chrome.runtime.sendMessage({ type: 'llmOrganize', provider: 'do', prompt: pagePrompt });
+        if (!doResp?.ok) throw new Error(doResp?.error || 'DO error');
+        organized = doResp.text;
+      } catch (doErr) {
+        const msg = (doErr && doErr.message) ? doErr.message : 'Unknown error';
+        const isAuth = /401|unauthorized|api key|not set/i.test(msg);
+        const isRate = /429|rate/i.test(msg);
+        const isTimeout = /abort|timeout/i.test(msg);
+        const reason = isAuth ? 'DO key error' : isRate ? 'DO rate limit' : isTimeout ? 'DO timeout' : 'DO error';
+        Logger.warn('DO LLM failed, falling back to Gemini', { reason, error: msg });
+        if (lt) lt.textContent = `Fast mode fail (${reason}). Organizing (fallback)...`;
+        const gemResp = await chrome.runtime.sendMessage({ type: 'llmOrganize', provider: 'gemini', prompt: await buildStructuredPrompt(rawContent, meta, lastExtractedTables) });
+        if (!gemResp?.ok) throw new Error(gemResp?.error || 'Gemini error');
+        organized = gemResp.text;
       }
       elements.extractedText.value = organized;
       updateStatsWithProcessing(organized);
       elements.extractedText.setAttribute('data-filename', generateTitleFilename());
+      hideProgress();
       showView('content');
+      try {
+        const cleaned = processedData?.processedText || rawContent;
+        await saveDualOutputs(meta, cleaned, organized);
+      } catch(_) {}
     } catch (error) {
       Logger.error('AI organize failed', error);
+      hideProgress();
       showError('AI organize failed: ' + (error?.message || 'Unknown error'));
     }
   }
@@ -1613,25 +1861,40 @@
       }
 
       if (elements.outputFormat) elements.outputFormat.value = 'llm';
-      if (lt) lt.textContent = 'Organizing with Gemini...';
+      if (lt) lt.textContent = 'Organizing (fast mode)...';
+      showProgress('Organizing (fast mode)...');
       const meta = { title: currentTitle, url: currentUrl };
       let organized;
       try {
-        organized = await GeminiClient.organizeText(rawContent, meta, lastExtractedTables);
-      } catch (gemErr) {
-        Logger.warn('Gemini failed in one-click, switching to DO', { error: gemErr.message });
-        if (lt) lt.textContent = 'Gemini failed. Organizing with Llama (DO)...';
-        organized = await DOClient.organizeText(rawContent, meta, lastExtractedTables);
+        const doResp = await chrome.runtime.sendMessage({ type: 'llmOrganize', provider: 'do', prompt: await buildStructuredPrompt(rawContent, meta, lastExtractedTables) });
+        if (!doResp?.ok) throw new Error(doResp?.error || 'DO error');
+        organized = doResp.text;
+      } catch (doErr) {
+        const msg = (doErr && doErr.message) ? doErr.message : 'Unknown error';
+        const isAuth = /401|unauthorized|api key|not set/i.test(msg);
+        const isRate = /429|rate/i.test(msg);
+        const isTimeout = /abort|timeout/i.test(msg);
+        const reason = isAuth ? 'DO key error' : isRate ? 'DO rate limit' : isTimeout ? 'DO timeout' : 'DO error';
+        Logger.warn('DO LLM failed in one-click, switching to Gemini', { reason, error: msg });
+        if (lt) lt.textContent = `Fast mode fail (${reason}). Organizing (fallback)...`;
+        const gemResp = await chrome.runtime.sendMessage({ type: 'llmOrganize', provider: 'gemini', prompt: await buildStructuredPrompt(rawContent, meta, lastExtractedTables) });
+        if (!gemResp?.ok) throw new Error(gemResp?.error || 'Gemini error');
+        organized = gemResp.text;
       }
 
       elements.extractedText.value = organized;
       updateStatsWithProcessing(organized);
       elements.extractedText.setAttribute('data-filename', generateTitleFilename());
       if (lt) lt.textContent = 'Saving file...';
-      await downloadAsFile();
+      try {
+        const cleaned = processedData?.processedText || rawContent;
+        await saveDualOutputs(meta, cleaned, organized);
+      } catch(_) {}
+      hideProgress();
       showView('content');
     } catch (err) {
       Logger.error('One-click flow failed', err);
+      hideProgress();
       showError('One-click failed: ' + (err?.message || 'Unknown error'));
     }
   }
@@ -1682,4 +1945,4 @@
     init();
   }
 
-})(); 
+})();

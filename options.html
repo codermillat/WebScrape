@@ -16,6 +16,8 @@
     .btn-tertiary { background: #ea4335; color: white; }
     small { color: #666; }
     .notice { background: #f8f9fa; border: 1px solid #e9ecef; padding: 12px; border-radius: 8px; margin-top: 12px; }
+    .grid { display: grid; grid-template-columns: 1fr; gap: 12px; }
+    .card { border: 1px solid #e9ecef; border-radius: 8px; padding: 12px; }
   </style>
   <script defer src="options.js"></script>
   </head>
@@ -24,18 +26,41 @@
     <h1>Web Text Extractor — Options</h1>
     <p class="notice">AI features are optional. If enabled, extracted text may be sent to external AI services to organize content. See Privacy Policy for details.</p>
 
-    <div class="row">
+    <div class="card">
       <label for="enableAi">Enable AI Features</label>
       <input id="enableAi" type="checkbox" />
     </div>
 
-    <label for="geminiKey">Google Gemini API Key</label>
-    <input id="geminiKey" type="password" placeholder="Paste your Gemini API key" />
-    <small>Used for organizing content with Gemini. Stored only on this device.</small>
+    <div class="card grid">
+      <div>
+        <label for="geminiKey">Google Gemini API Key</label>
+        <input id="geminiKey" type="password" placeholder="Paste your Gemini API key" />
+        <small>Used for organizing content with Gemini. Stored only on this device.</small>
+      </div>
+      <div>
+        <label for="doKey">DigitalOcean Inference API Key</label>
+        <input id="doKey" type="password" placeholder="Paste your DO Inference API key" />
+        <small>Fallback LLM provider. Stored only on this device.</small>
+      </div>
+    </div>
 
-    <label for="doKey">DigitalOcean Inference API Key</label>
-    <input id="doKey" type="password" placeholder="Paste your DO Inference API key" />
-    <small>Fallback LLM provider. Stored only on this device.</small>
+    <div class="card grid">
+      <div class="row">
+        <label for="fullPageSettings" style="margin:0">Full-Page Extraction Settings</label>
+      </div>
+      <div class="row">
+        <input id="optFullPage" type="checkbox" />
+        <label for="optFullPage" style="font-weight:500;">Full-Page Structured Extract</label>
+      </div>
+      <div class="row">
+        <input id="optExcludeBoiler" type="checkbox" />
+        <label for="optExcludeBoiler" style="font-weight:500;">Exclude Boilerplate (headers/nav/footers/ads)</label>
+      </div>
+      <div class="row">
+        <input id="optIncludeMetadata" type="checkbox" checked />
+        <label for="optIncludeMetadata" style="font-weight:500;">Include Metadata (description & Open Graph)</label>
+      </div>
+    </div>
 
     <div class="row">
       <button id="saveBtn" class="btn btn-primary">Save</button>

@@ -1,9 +1,10 @@
 html, body {
   width: 380px;
-  height: 500px;
+  max-width: 420px;
+  height: auto;
   margin: 0;
   padding: 0;
-  overflow: hidden;
+  overflow: auto;
 }
 /* Reset and base styles */
 * {
@@ -32,8 +33,8 @@ body {
   line-height: 1.5;
   color: #333;
   background: #f8f9fa;
-  width: 380px;
-  min-width: 380px;
+  width: 100%;
+  min-width: 320px;
   overflow-x: hidden;
 }
 
@@ -54,13 +55,13 @@ textarea:focus {
 
 /* Container */
 .container {
-  width: 380px;
-  max-width: 380px;
-  height: 500px; /* fixed popup height */
+  width: 100%;
+  max-width: 420px;
+  min-height: 460px;
   background: white;
   border-radius: 8px;
   box-shadow: 0 4px 20px rgba(0, 0, 0, 0.1);
-  overflow: hidden; /* prevent overall scroll */
+  overflow: auto; /* allow scroll when content grows */
   display: flex;
   flex-direction: column;
 }
@@ -115,7 +116,7 @@ textarea:focus {
   flex: 1; /* take remaining space below header/settings */
   display: flex;
   flex-direction: column;
-  overflow: hidden; /* only inner textarea will scroll */
+  overflow: auto; /* allow internal scroll */
 }
 
 /* Utility classes */
@@ -372,7 +373,7 @@ textarea:focus {
 .text-area {
   width: 100%;
   flex: 1; /* fill available space */
-  min-height: 0;
+  min-height: 140px;
   padding: 12px;
   border: 1px solid #ddd;
   border-radius: 6px;
@@ -383,7 +384,7 @@ textarea:focus {
   background: #fafafa;
   color: #333;
   outline: none;
-  overflow-y: auto; /* only this scrolls */
+  overflow-y: auto; /* area scrolls */
 }
 
 .text-area:focus {
@@ -548,3 +549,80 @@ textarea:focus {
 .text-area::-webkit-scrollbar-thumb:hover {
   background: #a8a8a8;
 } 
+
+/* Format switch (pill tabs) */
+.format-switch {
+  display: flex;
+  gap: 6px;
+  margin: 4px 0 4px;
+  flex-wrap: wrap;
+}
+.format-switch .pill {
+  flex: 1 0 auto;
+  padding: 4px 10px;
+  font-size: 11px;
+  line-height: 1.3;
+  border-radius: 20px;
+  border: 1px solid #d0d7de;
+  background: #fff;
+  color: #444;
+  cursor: pointer;
+  transition: all 0.18s ease;
+  font-weight: 500;
+  position: relative;
+}
+.format-switch .pill:hover {
+  background: #f1f5f9;
+  border-color: #b6bec5;
+}
+.format-switch .pill.active {
+  background: linear-gradient(135deg,#4285f4,#34a853);
+  color: #fff;
+  border-color: #2f6ad4;
+  box-shadow: 0 2px 6px rgba(66,133,244,0.3);
+}
+.format-switch .pill:focus {
+  outline: 2px solid #4285f4;
+  outline-offset: 1px;
+}
+
+/* Progress bar for LLM operations */
+.progress {
+  position: relative;
+  width: 100%;
+  height: 6px;
+  background: #e9ecef;
+  border-radius: 4px;
+  overflow: hidden;
+  margin: 4px 0 6px;
+  display: flex;
+  align-items: center;
+}
+.progress .bar {
+  height: 100%;
+  background: linear-gradient(90deg,#4285f4,#34a853);
+  width: 0;
+  transition: width 0.3s ease;
+}
+.progress .bar.indeterminate {
+  position: absolute;
+  left: 0;
+  width: 40%;
+  animation: indet 1.2s infinite ease-in-out;
+}
+@keyframes indet {
+  0% { transform: translateX(-60%); }
+  50% { transform: translateX(120%); }
+  100% { transform: translateX(240%); }
+}
+.progress-label {
+  position: absolute;
+  top: 8px;
+  left: 0;
+  font-size: 10px;
+  color: #666;
+  letter-spacing: .3px;
+}
+.progress.hidden {
+  display: none !important;
+}
