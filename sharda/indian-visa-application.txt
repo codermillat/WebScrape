@@ -1,0 +1,116 @@
+URL: https://indianvisa-bangladesh.nic.in/visa/
+
+Indian Visa Information:
+
+All foreign nationals entering India need a valid international travel document (national passport) and a valid visa obtained from an Indian Mission or Post abroad.
+
+To apply for an Indian Visa:
+*   Apply online.
+*   Submit the signed physical copy of the application form, completed in all respects, at the concerned Indian Visa Application Center (IVAC) or directly to the Indian Mission/Post on the scheduled interview date, along with the required supporting documents.
+
+Visa Application Status: Check the status of your Visa Application online.
+
+Visa Categories:
+Government of India issues the following visas: Business Visa, Conference Visa, Diplomatic Visa, Employment Visa, Emergency Visa, Entry Visa, Journalist Visa, Medical Visa, Missionaries Visa, Permit to re-enter within 2 months, Research Visa, Student Visa, Tourist Visa, Transit Visa.
+
+Visa Processing Time:
+The Indian Mission/Post requires a minimum of three working days to process the case and issue a visa, depending on nationality and excluding special cases.
+
+Photo Requirements:
+*   Format: JPEG
+*   Size: Minimum 10 KB, Maximum 300 KB
+*   The height and width of the Photo must be equal.
+*   Photo should present Full face, front view, eyes open.
+*   Center head within frame and present full head from top of hair to bottom of chin.
+*   Background should be plain light colored or white background.
+*   No shadows on the face or on the background.
+*   Without borders.
+*   Make sure that photo presents full head from top of hair to bottom of chin. Head should measure 1 inch to 1-3/8 inches (25mm to 35mm). Make sure eye height is between 1-1/8 inches to 1-3.
+
+Visa Fee:
+The visa fee depends on the type and duration of the visa. The fee is divided into basic fee, special fee, and processing fee by the outsourcing agency. The basic fee is displayed during online registration but is indicative only. The final fee is charged upon application submission. Fees are non-refundable, even if the application is withdrawn, the visa is not granted, or the visa issued is of a shorter duration than applied for.
+
+Visa Provision:
+
+*   **Tourist:**
+    *   Period: 180 days
+    *   Entry: Multiple (M)
+    *   Documents: No
+    *   Extendable: No
+*   **Transit:**
+    *   Period: 15 days
+    *   Entry: Single (S)/ Double
+    *   Documents: Return/ onward journey ticket
+    *   Extendable: No
+*   **Business:**
+    *   Period: 5 years
+    *   Entry: Multiple (M)
+    *   Documents: Documents to prove bonafide purpose (Company’s letter etc.)
+    *   Extendable: Yes
+*   **Employment:**
+    *   Period: 1 year/ period of contract
+    *   Entry: Multiple (M)
+    *   Documents: Proof of employment (appointment document), terms and conditions
+    *   Extendable: Yes
+*   **Student:**
+    *   Period: Period of course/ 5 years
+    *   Entry: Multiple (M)
+    *   Documents: Proof of admission in Indian Institution
+    *   Extendable: Yes
+*   **Foreigners of Indian Origin:**
+    *   Period: 5 years
+    *   Entry: Multiple (M)
+    *   Documents: Proof of being of Indian Origin
+    *   Extendable: Yes
+*   **Intern:**
+    *   Period: Duration of the Internship or One year, whichever is less
+    *   Entry: Single/Double/Multiple
+    *   Documents: Letter from the Indian company/educational institution/NGO concerned sponsoring the foreign national for internship programme clearly indicating the period of internship.
+    *   Extendable: Non-extendable. (Registration required within 14 days of arrival with concerned FRO)
+*   **Film:**
+    *   Period: Duration of the shooting of the film as per schedule submitted or One year, whichever is less
+    *   Entry: Single/Double/Multiple
+    *   Documents:
+        *   Copy of detailed shooting script in case of feature film and detailed concept in case of TV show/serial
+        *   Details of visiting film crew and location of film shooting.
+        *   Letter of intent regarding the shooting of the film in India mentioning the production schedule, particulars of the cast and crew coming to India for the purpose of shoot, chosen location, list of film equipment and other relevant details.
+    *   Extendable: Yes
+
+If a visa is for more than 180 days, registration is compulsory within 14 days of arrival in India.
+
+Identification for Nepalese and Indian Citizens Traveling by Air:
+Nepalese and Indian citizens traveling by air between the two countries must possess one of the following documents:
+*   Valid national passport
+*   Valid photo identity card issued by the Government of India / State Government or UT Administration / Election Commission of India
+*   Emergency certificate issued by the Embassy of India, Kathmandu to Indians and by the Embassy of Nepal in Delhi in respect of Nepalese citizens
+
+Technical Information for Online Visa Application:
+*   Best viewed in Mozilla Firefox, Google Chrome, Internet Explorer (Windows) version 9.0 and above.
+*   Adobe Acrobat Reader version 7.0 or higher is required to download and print the completed application form.
+*   Use an Ink-Jet or Laser printer to print the completed Visa Application forms.
+
+Online Application Instructions:
+*   The application form is for foreigners applying for a visa from outside India.
+*   Each online application form is for one person only.
+*   Furnish information accurately.
+*   Verify application details before submitting.
+*   Keep the Application Id for further communications.
+
+Appointment Scheduling:
+*   Schedule an appointment with the concerned Indian Mission.
+*   Each applicant must schedule a separate appointment.
+
+Process for Filling Up Online Application Form:
+*   Access the Visa Application system online.
+*   Select the Indian Mission.
+*   Fill the application online.
+*   After submitting, the system generates an Application Id.
+*   Select "Yes" to seek appointment and make payment online, or "No" to print the submitted application form.
+*   If "No," print the form and approach the Indian Mission with supporting documents.
+*   If "Yes," the system links to:
+    *   Selection of Date and Time of appointment at the concerned Indian Mission
+    *   Calculation of Visa fee, service charge, VAT etc. as applicable according to the Visa type
+    *   ePayment using service provider’s payment system
+*   If Appointment Scheduling and e-Payment are unavailable, print the form, visit the Indian Mission with supporting documents, and make the payment.
+
+The e-payment facility is not available for all Indian Missions abroad. If not available, submit application fees to the outsourcing agency or the Mission directly with supporting documents.

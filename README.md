@@ -101,16 +101,14 @@ A powerful Chrome extension that extracts and preprocesses webpage content for L
 
 ```
 WebScrape/
-├── manifest.json          # Extension configuration
-├── popup.html             # Extension popup interface
-├── popup.css              # Styling for popup
-├── popup.js               # Main popup logic
-├── content.js             # Page content extraction
-├── text-processor.js      # Text preprocessing engine
-├── text_preprocessor.py   # Python preprocessing (optional)
-├── process_sharda_text.py # Example processing script
-├── requirements.txt       # Python dependencies
-└── README.md             # This file
+├── manifest.json       # Extension configuration (MV3)
+├── popup.html          # Extension popup interface
+├── popup.css           # Styling for popup
+├── popup.js            # Main popup logic
+├── content.js          # Page content extraction
+├── text-processor.js   # Text preprocessing engine
+├── README.md           # This file
+└── privacy-policy.md   # Privacy policy
 ```
 
 ## 🤖 LLM Training Format
@@ -235,14 +233,8 @@ The extension provides detailed analytics:
 3. Click reload button for the extension
 4. Test changes on target websites
 
-### Python Integration (Optional)
-```bash
-# Install Python dependencies
-pip install -r requirements.txt
-
-# Run preprocessing on extracted text
-python process_sharda_text.py
-```
+### Python Integration
+Not applicable in this repository. Previous references to Python helper scripts have been removed for accuracy.
 
 ## 🔒 Privacy & Security
 
@@ -250,6 +242,8 @@ python process_sharda_text.py
 - **No Data Collection**: Extension doesn't send data to external servers
 - **Minimal Permissions**: Only requests necessary access rights
 - **Content Security**: Follows Chrome extension security best practices
+
+See: `privacy-policy.md`
 
 ## 🐛 Troubleshooting
 

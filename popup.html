@@ -18,6 +18,30 @@
       >
         Extract Text
       </button>
+      <button
+        id="downloadHeaderBtn"
+        class="extract-btn"
+        aria-label="Save extracted text to file"
+        title="Save .txt"
+      >
+        Save .txt
+      </button>
+      <button
+        id="aiOrganizeBtn"
+        class="extract-btn"
+        aria-label="Organize extracted text with AI"
+        title="Organize (AI)"
+      >
+        Organize (AI)
+      </button>
+      <button
+        id="oneClickBtn"
+        class="extract-btn"
+        aria-label="One click: extract, organize with AI, and save"
+        title="One-Click Save"
+      >
+        One-Click
+      </button>
       <div id="extract-help" class="sr-only">
         Extracts visible text content from the current webpage for processing
       </div>
@@ -165,7 +189,7 @@
     <main class="main">
       <div id="loadingDiv" class="loading hidden">
         <div class="spinner"></div>
-        <span>Extracting text...</span>
+        <span id="loadingText">Extracting text...</span>
       </div>
       
       <div id="errorDiv" class="error hidden">

@@ -37,6 +37,31 @@ class TextProcessor {
     // Combined stop words
     this.allStopWords = new Set([...this.stopWords, ...this.webStopWords]);
   }
+  /**
+   * Merge extracted tables into processedData for LLM formatting
+   * tables: Array<{ caption: string, rows: string[][] }>
+   */
+  enrichWithTables(processedData, tables = []) {
+    if (!tables || tables.length === 0) return processedData;
+    const sections = { ...(processedData.sections || {}) };
+    const lines = [];
+    tables.forEach(tbl => {
+      if (tbl.caption) {
+        lines.push(tbl.caption.toUpperCase());
+      }
+      const maxCols = Math.max(...tbl.rows.map(r => r.length));
+      tbl.rows.forEach(r => {
+        if (maxCols === 2 && r.length === 2) {
+          lines.push(`- ${r[0]}: ${r[1]}`);
+        } else {
+          lines.push(`- ${r.join(' | ')}`);
+        }
+      });
+      lines.push('');
+    });
+    sections.fee_tables = lines.join('\n');
+    return { ...processedData, sections };
+  }
 
   /**
    * Validate and sanitize input text with improved performance
@@ -81,8 +106,8 @@ class TextProcessor {
 
     let cleaned = text;
 
-    // Convert to lowercase if requested
-    if (options.lowercase !== false) {
+    // Convert to lowercase only if explicitly requested
+    if (options.lowercase === true) {
       cleaned = cleaned.toLowerCase();
     }
 
@@ -103,7 +128,8 @@ class TextProcessor {
     }
 
     // Remove special navigation patterns
-    cleaned = cleaned.replace(/javascript:void\(0\)/g, '');
+    cleaned = cleaned.replace(/javascript:void\(0\)/gi, '');
+    cleaned = cleaned.replace(/\bvoid\s*0\b/gi, '');
     cleaned = cleaned.replace(/\[.*?\]\s*-\s*https?:\/\/\S+/g, '');
 
     // Remove excessive punctuation and special characters
@@ -118,8 +144,30 @@ class TextProcessor {
       cleaned = cleaned.replace(/\b\d+\b/g, '');
     }
 
-    // Normalize whitespace
-    cleaned = cleaned.replace(/\s+/g, ' ').trim();
+    // Normalize whitespace but preserve line breaks (paragraphs)
+    cleaned = cleaned.replace(/\r\n?/g, '\n');
+    cleaned = cleaned
+      .split('\n')
+      .map(line => line.replace(/\s+/g, ' ').trim())
+      .filter(line => line.length > 0)
+      .join('\n');
+
+    // Remove common web UI noise
+    const NOISE_PATTERNS = [
+      /\bapply now\b/gi,
+      /\bimage gallery\b/gi,
+      /\bvideo gallery\b/gi,
+      /\bquick links\b/gi,
+      /\bvirtual tour\b/gi,
+      /\bdisclaimer\b/gi,
+      /\bprivacy policy\b/gi,
+      /\bterms of use\b/gi,
+      /\bwhat'?s new\b/gi,
+      /\bhello\s+how can i help\b/gi
+    ];
+    for (const pattern of NOISE_PATTERNS) {
+      cleaned = cleaned.replace(pattern, '');
+    }
 
     return cleaned;
   }
@@ -142,7 +190,26 @@ class TextProcessor {
       }
     }
 
-    return uniqueSentences.join(' ');
+    return uniqueSentences.join('. ');
+  }
+
+  /**
+   * Remove duplicate lines while preserving structure
+   */
+  removeDuplicateLines(text) {
+    if (!text) return '';
+    const lines = text.split('\n');
+    const seen = new Set();
+    const unique = [];
+    for (const line of lines) {
+      const normalized = line.replace(/\s+/g, ' ').trim();
+      if (normalized.length === 0) continue;
+      if (!seen.has(normalized)) {
+        seen.add(normalized);
+        unique.push(line);
+      }
+    }
+    return unique.join('\n');
   }
 
   /**
@@ -174,8 +241,30 @@ class TextProcessor {
     return tokens.filter(token => 
       token.length > 2 && 
       !stopWordSet.has(token.toLowerCase()) &&
-      !/^\d+$/.test(token)
+      true
     );
+  }
+
+  /**
+   * Remove stop words directly from a text while preserving punctuation/newlines
+   */
+  removeStopWordsFromText(text, includeWebStopWords = true) {
+    const stopWordSet = includeWebStopWords ? this.allStopWords : this.stopWords;
+    return text
+      .split('\n')
+      .map(line => {
+        const parts = line.split(/(\W+)/); // keep separators
+        const filtered = parts.map(token => {
+          if (/^\w+$/.test(token)) {
+            const isStop = stopWordSet.has(token.toLowerCase());
+            return isStop ? '' : token;
+          }
+          return token;
+        }).join('');
+        return filtered.replace(/\s+/g, ' ').trim();
+      })
+      .filter(l => l.length > 0)
+      .join('\n');
   }
 
   /**
@@ -284,31 +373,52 @@ class TextProcessor {
   }
 
   /**
-   * Process large text in chunks for better performance
+   * Process large text in chunks for better performance.
+   *
+   * Supports both signatures for backward-compatibility:
+   * - processLargeText(text, chunkSize)
+   * - processLargeText(text, options, chunkSize)
+   *
+   * When options are provided, they are passed through to processForLLM
+   * so that large-text processing respects user settings.
    */
-  processLargeText(text, chunkSize = 100000) {
-    if (!text || text.length <= chunkSize) {
-      return this.processForLLM(text);
+  processLargeText(text, optionsOrChunkSize = {}, maybeChunkSize = 100000) {
+    // Determine provided parameters
+    const isNumberSecondParam = typeof optionsOrChunkSize === 'number';
+    const processingOptions = isNumberSecondParam ? undefined : optionsOrChunkSize || {};
+    const chunkSize = isNumberSecondParam
+      ? optionsOrChunkSize
+      : (typeof maybeChunkSize === 'number' ? maybeChunkSize : 100000);
+
+    if (!text || typeof text !== 'string') {
+      return this.processForLLM('');
+    }
+
+    if (text.length <= chunkSize) {
+      return this.processForLLM(text, processingOptions);
     }
     
     const chunks = [];
     for (let i = 0; i < text.length; i += chunkSize) {
-      chunks.push(text.substring(i, i + chunkSize));
+      const nextChunk = text.substring(i, i + chunkSize);
+      if (nextChunk && nextChunk.length > 0) {
+        chunks.push(nextChunk);
+      }
     }
     
-    const processedChunks = chunks.map(chunk => this.processForLLM(chunk));
+    const processedChunks = chunks.map(chunk => this.processForLLM(chunk, processingOptions));
     
     // Merge the results
     const mergedText = processedChunks.map(p => p.processedText).join(' ');
     const mergedSections = processedChunks.reduce((acc, p) => {
-      Object.keys(p.sections).forEach(key => {
+      Object.keys(p.sections || {}).forEach(key => {
         acc[key] = (acc[key] || '') + ' ' + (p.sections[key] || '');
       });
       return acc;
     }, {});
     
-    const mergedKeyPhrases = [...new Set(processedChunks.flatMap(p => p.keyPhrases))];
-    const mergedTokens = processedChunks.flatMap(p => p.tokens);
+    const mergedKeyPhrases = [...new Set(processedChunks.flatMap(p => p.keyPhrases || []))];
+    const mergedTokens = processedChunks.flatMap(p => p.tokens || []);
     
     return {
       processedText: mergedText,
@@ -340,9 +450,9 @@ class TextProcessor {
     // Step 1: Clean text
     const cleanedText = this.cleanText(rawText, processingOptions);
 
-    // Step 2: Remove duplicates
+    // Step 2: Remove duplicates (line-aware to preserve structure)
     const deduplicatedText = processingOptions.removeDuplicates ? 
-      this.removeDuplicates(cleanedText) : cleanedText;
+      this.removeDuplicateLines(cleanedText) : cleanedText;
 
     // Step 3: Extract sections
     const sections = processingOptions.extractSections ? 
@@ -362,8 +472,12 @@ class TextProcessor {
     // Step 7: Calculate statistics
     const stats = this.calculateStats(rawText, deduplicatedText, filteredTokens);
 
+    // Optionally remove stopwords from the output text for the "clean" view
+    const finalProcessedText = processingOptions.includeStopWords ?
+      deduplicatedText : this.removeStopWordsFromText(deduplicatedText);
+
     return {
-      processedText: deduplicatedText,
+      processedText: finalProcessedText,
       sections,
       keyPhrases,
       tokens: filteredTokens,
@@ -394,6 +508,9 @@ ${sections.testimonials || 'No testimonials found'}
 
 CONTACT INFORMATION:
 ${sections.contact_info || 'No contact information found'}
+
+HOSTEL/FEES TABLES:
+${sections.fee_tables || 'No fee tables found'}
 
 KEY TOPICS: ${keyPhrases.slice(0, 10).join(', ')}
 

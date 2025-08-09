@@ -1,0 +1,148 @@
+URL: https://www.sharda.ac.in/programmes/btech-computer-science
+
+B.Tech Computer Science(CSE) at Sharda University
+
+**Course Fee (For National Students):**
+
+*   1st Year: 270000
+*   2nd Year: 278100
+*   3rd Year: 286443
+*   4th Year: 295036
+
+*   1st Sem: 137500
+*   2nd Sem: 137500
+*   3rd Sem: 141550
+*   4th Sem: 141550
+*   5th Sem: 145722
+*   6th Sem: 145722
+*   7th Sem: 150018
+*   8th Sem: 150018
+
+**Course Fee (For International Students):**
+
+*   Fee Per Year: 4000** (USD, presumably)
+
+**Eligibility Criteria:**
+
+*   **For National Students:**
+    *   Matriculation with 60% marks.
+    *   Sr. Secondary (10+2) with 60% marks (Aggregate) & minimum 60% marks in PCM Computer Science/PCB for Biotechnology without gap between 10th and 12th.
+    *   Minimum 50% marks in Maths.
+    *   SUAT (Online Test) Followed by Personal Interview OR JEE All India Rank upto 3 Lakh.
+*   **For International Students:**
+    *   Minimum 50% in the qualifying examination.
+    *   Having studied the pre-requisite subjects for admission into the desired program.
+
+**Programme Structure (Curriculum):**
+
+(Note: The following is a summary.  Refer to the original tables for complete course codes and details.)
+
+*   **Semester 1:**
+    *   Programming for Problem Solving
+    *   Calculus and Abstract Algebra
+    *   Engineering Physics-I OR Principles of Electrical and Electronics Engineering
+    *   Environmental Studies OR Value & Ethics
+    *   Communicative English-1
+    *   Programming for Problem Solving Lab
+    *   Introduction to Computer Science and Engineering
+    *   Computer Aided Design & Drafting OR Mechanical Workshop
+    *   Physics Lab OR Principles of Electrical and Electronics Engineering Lab
+    *   Total Credits: 18.5/19.5
+*   **Semester 2:**
+    *   Application based Programming in Python
+    *   Data Structures
+    *   Probability and Statistics
+    *   Engineering Physics-I OR Principles of Electrical and Electronics Engineering
+    *   Values and Ethics OR Environmental Studies
+    *   Communicative English -2
+    *   Design and creativity Lab
+    *   Data Structures Lab
+    *   Application based Programming in Python
+    *   Mechanical Workshop OR Computer Aided Design & Drafting
+    *   Physics Lab II OR Principles of Electrical and Electronics Engineering
+    *   Total Credits: 21.5/ 22.5
+*   **Semester 3:**
+    *   Introduction to Biology for Engineers
+    *   Discrete Structures
+    *   Computer Organization and Architecture
+    *   Computer Networks
+    *   Object Oriented Programming Using Java
+    *   Principles of Operating System
+    *   Logical Skills Building and Soft Skills
+    *   Object Oriented Programming Using Java
+    *   Principles of Operating System Lab
+    *   Computer Networks Lab
+    *   Project Based Learning (PBL) -1
+    *   Summer Internship-I
+    *   Total Credits: 25
+*   **Semester 4:**
+    *   Data Base Management System
+    *   Theory of Computation
+    *   Management for Engineers
+    *   Program Elective-1 (Mathematical Techniques, Introduction to Graph Theory and its Applications, Advanced Java Programming)
+    *   Open Elective – 1
+    *   Quantitative and Qualitative Aptitude Skill Building
+    *   Introduction to Entrepreneurship Development
+    *   Data Base Management System Lab
+    *   Project Based Learning (PBL) -2
+    *   Total Credits: 22
+*   **Semester 5:**
+    *   Design and Analysis of Algorithm
+    *   Software Engineering and Testing Methodologies
+    *   Program Elective-2 (Introduction to Cloud Computing, Android Application Development, Web Technologies)
+    *   Open Elective – 2
+    *   Personality Development and Decision making Skills
+    *   Research Methodology
+    *   Design and Analysis of Algorithm Lab
+    *   Project Based Learning (PBL) -3
+    *   Software Engineering and Testing Methodologies
+    *   Summer Internship-II
+    *   Technical Skill Enhancement Course-1 Simulation Lab
+    *   Community Connect
+    *   Total Credits: 23
+*   **Semester 6:**
+    *   Compiler Design
+    *   Artificial Intelligence
+    *   Program Elective-3 (Digital Image Processing, Cryptography and Network Security)
+    *   Program Elective-4 (Software Project Management, Software Testing)
+    *   Program Elective-5 (Wireless Networks, Risk Management, Advanced Operating System)
+    *   Open Elective – 3
+    *   Campus to Corporate
+    *   Compiler Design Lab
+    *   Artificial Intelligence Lab
+    *   Technical Skill Enhancement Course-2(Application Development Lab)
+    *   Project Based Learning (PBL) -4
+    *   Total Credits: 25
+*   **Semester 7:**
+    *   Machine Learning
+    *   Program Elective-6 (Mobile Computing, Quantum Computing)
+    *   Program Elective-7 (Introduction to Internet of Things, Parallel Computing Algorithms, 3D Printing and Software Tools)
+    *   Open Elective – 4
+    *   Machine Learning Lab
+    *   Summer Internship-III
+    *   Capstone – 1
+    *   Total Credits: 16
+*   **Semester 8:**
+    *   Capstone - 2
+    *   Total Credits: 8
+
+**Programme Curricula Links:**
+
+*   2023-24: View Details
+*   2021-22: View Details
+*   2020-21: View Details
+*   2019-20: View Details
+*   2018-19: View Details
+
+**Career Paths:**
+
+*   Applications Developer
+*   Systems Engineer
+*   Software Engineer
+*   System Software Developer
+*   Database Programmer/Designer
+*   Computer Animation Expert
+*   Quality Assurance Specialist
+*   Systems Analyst
+*   Computer Science - Lecturer
+*   Information Security Specialist

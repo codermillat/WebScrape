@@ -4,7 +4,7 @@
   "version": "1.0",
   "description": "Extract and clean text content from web pages",
   "content_security_policy": {
-    "extension_pages": "script-src 'self'; object-src 'self'"
+    "extension_pages": "script-src 'self'; object-src 'self'; connect-src 'self' https://* http://*"
   },
   "permissions": [
     "activeTab",
@@ -16,11 +16,8 @@
     "default_popup": "popup.html",
     "default_title": "Extract Text"
   },
-  "content_scripts": [
-    {
-      "matches": ["<all_urls>"],
-      "js": ["content.js"],
-      "run_at": "document_end"
-    }
+  "host_permissions": [
+    "https://*/*",
+    "http://*/*"
   ]
 } 
