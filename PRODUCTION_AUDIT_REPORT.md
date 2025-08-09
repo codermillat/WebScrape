@@ -182,10 +182,12 @@ const { textContent } = await extractText();
 - Implement data retention controls
 - Add clear consent mechanisms
 
-### 18. External Connections ✅ **SECURE**
-- No external API calls
-- All processing done locally
-- No data transmission to third parties
+### 18. External Connections ✅ **CONTROLLED**
+- External API calls are only made when the user enables AI features and consents
+- Services used:
+  - Google Generative Language API (`https://generativelanguage.googleapis.com`)
+  - DigitalOcean Inference (`https://inference.do-ai.run`)
+- No data transmission occurs otherwise; local processing remains the default
 
 ---
 
@@ -195,9 +197,11 @@ const { textContent } = await extractText();
 
 #### ✅ **COMPLETED**
 - [x] Security vulnerabilities fixed
+- [x] Removed leaked secrets and dead files
 - [x] Basic accessibility compliance
 - [x] Error handling implemented
-- [x] Content Security Policy added
+- [x] Content Security Policy tightened (object-src 'none'; restricted connect-src)
+- [x] AI consent gating and options-based key management
 
 #### ⚠️ **REQUIRED BEFORE PRODUCTION**
 - [ ] Add comprehensive unit tests

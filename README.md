@@ -107,6 +107,9 @@ WebScrape/
 ├── popup.js            # Main popup logic
 ├── content.js          # Page content extraction
 ├── text-processor.js   # Text preprocessing engine
+├── options.html        # Options page for API keys & AI toggle
+├── options.js          # Logic for options page
+├── icons/              # PNG icons (16/32/48/128) - add your assets here
 ├── README.md           # This file
 └── privacy-policy.md   # Privacy policy
 ```
@@ -162,6 +165,8 @@ The extension provides detailed analytics:
 | Remove URLs | Strip web links and references | ✅ ON |
 | Remove Numbers | Filter out numeric content | ❌ OFF |
 | Remove Stop Words | Filter common words | ✅ ON |
+| Include Hidden Elements | Include non-visible elements in extraction | ❌ OFF |
+| Auto-scroll Page | Scroll to load lazy content before extraction | ❌ OFF |
 | Extract Sections | Categorize content types | ✅ ON |
 | Extract Key Phrases | Identify important topics | ✅ ON |
 
@@ -232,6 +237,7 @@ The extension provides detailed analytics:
 2. Go to `chrome://extensions/`
 3. Click reload button for the extension
 4. Test changes on target websites
+5. Configure API keys in Options if you plan to use AI features
 
 ### Python Integration
 Not applicable in this repository. Previous references to Python helper scripts have been removed for accuracy.

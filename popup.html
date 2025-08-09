@@ -31,6 +31,7 @@
         class="extract-btn"
         aria-label="Organize extracted text with AI"
         title="Organize (AI)"
+        style="display:none"
       >
         Organize (AI)
       </button>
@@ -39,6 +40,7 @@
         class="extract-btn"
         aria-label="One click: extract, organize with AI, and save"
         title="One-Click Save"
+        style="display:none"
       >
         One-Click
       </button>
@@ -65,6 +67,29 @@
           <span>Remove Duplicates</span>
           <div id="remove-duplicates-help" class="sr-only">
             Remove duplicate sentences from extracted text
+          </div>
+        </label>
+        <label class="setting-item">
+          <input 
+            type="checkbox" 
+            id="includeHidden"
+            aria-describedby="include-hidden-help"
+          >
+          <span>Include Hidden Elements</span>
+          <div id="include-hidden-help" class="sr-only">
+            Include text from elements not currently visible
+          </div>
+        </label>
+
+        <label class="setting-item">
+          <input 
+            type="checkbox" 
+            id="autoScroll"
+            aria-describedby="auto-scroll-help"
+          >
+          <span>Auto-scroll Page</span>
+          <div id="auto-scroll-help" class="sr-only">
+            Automatically scroll the page to load lazy content
           </div>
         </label>
         
@@ -148,6 +173,15 @@
           Choose how the processed text should be formatted for output
         </div>
       </div>
+
+      <div class="output-format" role="group" aria-labelledby="ai-toggle-label">
+        <label id="ai-toggle-label" for="enableAiToggle">Enable AI Features:</label>
+        <input type="checkbox" id="enableAiToggle" aria-describedby="ai-toggle-help">
+        <button type="button" id="manageApiKeysBtn" class="browse-btn" aria-label="Manage API keys">Manage API Keys</button>
+        <div id="ai-toggle-help" class="sr-only">
+          When enabled and consented, extracted text may be sent to external AI services to organize content
+        </div>
+      </div>
       
       <div class="save-location" role="group" aria-labelledby="location-label">
         <label id="location-label" for="saveLocation">Save Location:</label>
@@ -221,14 +255,14 @@
             <svg width="16" height="16" viewBox="0 0 24 24" fill="currentColor">
               <path d="M16 1H4c-1.1 0-2 .9-2 2v14h2V3h12V1zm3 4H8c-1.1 0-2 .9-2 2v14c0 1.1.9 2 2 2h11c1.1 0 2-.9 2-2V7c0-1.1-.9-2-2-2zm0 16H8V7h11v14z"/>
             </svg>
-            Copy All
+            <span class="btn-label" id="copyBtnLabel">Copy All</span>
           </button>
           
           <button id="downloadBtn" class="btn btn-secondary">
             <svg width="16" height="16" viewBox="0 0 24 24" fill="currentColor">
               <path d="M19 9h-4V3H9v6H5l7 7 7-7zM5 18v2h14v-2H5z"/>
             </svg>
-            Download
+            <span class="btn-label" id="downloadBtnLabel">Download</span>
           </button>
           
           <button id="clearBtn" class="btn btn-tertiary">
@@ -255,5 +289,17 @@
   
   <script src="text-processor.js"></script>
   <script src="popup.js"></script>
+
+  <!-- AI Consent Modal -->
+  <div id="aiConsentModal" class="hidden" role="dialog" aria-modal="true" aria-labelledby="aiConsentTitle" aria-describedby="aiConsentDesc" style="position:fixed;inset:0;background:rgba(0,0,0,0.4);display:flex;align-items:center;justify-content:center;">
+    <div style="background:#fff;padding:16px;border-radius:8px;max-width:360px;width:90%;box-shadow:0 6px 24px rgba(0,0,0,0.2);">
+      <h3 id="aiConsentTitle" style="margin-bottom:8px;">Enable AI Features</h3>
+      <p id="aiConsentDesc" style="font-size:13px;color:#444;">When using AI features, extracted text and optional tables may be sent to external services (Google Gemini and/or DigitalOcean Inference) to organize content. Proceed only if you consent.</p>
+      <div style="display:flex;gap:8px;justify-content:flex-end;margin-top:12px;">
+        <button id="aiConsentCancel" class="btn btn-tertiary">Cancel</button>
+        <button id="aiConsentAccept" class="btn btn-secondary">I Understand</button>
+      </div>
+    </div>
+  </div>
 </body>
 </html> 

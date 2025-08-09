@@ -1,10 +1,12 @@
 {
   "manifest_version": 3,
   "name": "Web Text Extractor",
-  "version": "1.0",
+  "short_name": "Text Extractor",
+  "version": "1.0.1",
   "description": "Extract and clean text content from web pages",
+  "homepage_url": "https://example.com", 
   "content_security_policy": {
-    "extension_pages": "script-src 'self'; object-src 'self'; connect-src 'self' https://* http://*"
+    "extension_pages": "script-src 'self'; object-src 'none'; connect-src 'self' https://generativelanguage.googleapis.com https://inference.do-ai.run"
   },
   "permissions": [
     "activeTab",
@@ -16,8 +18,11 @@
     "default_popup": "popup.html",
     "default_title": "Extract Text"
   },
-  "host_permissions": [
-    "https://*/*",
-    "http://*/*"
-  ]
-} 
+  "options_page": "options.html",
+  "icons": {
+    "16": "icons/icon16.png",
+    "32": "icons/icon32.png",
+    "48": "icons/icon48.png",
+    "128": "icons/icon128.png"
+  }
+}
