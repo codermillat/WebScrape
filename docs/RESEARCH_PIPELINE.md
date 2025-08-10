@@ -12,14 +12,14 @@ The process of turning a webpage into a clean text file involves three main stag
 
 ```mermaid
 graph TD
-    A["1. Start: A researcher clicks the 'Extract Text' button on a university webpage"] --> B["2. The extension analyzes the page"];
+    A["Start: A researcher clicks the 'Extract Text' button on a university webpage"] --> B["The extension analyzes the page"];
     B --> C{"Is it a regular webpage or a PDF document?"};
     C --> |"It's a PDF"| D["PDF Extraction"];
     C --> |"It's a webpage"| E["Webpage Extraction"];
-    D --> F["3. The raw text is sent for processing"];
+    D --> F["The raw text is sent for processing"];
     E --> F;
-    F --> G["4. The text is cleaned and structured"];
-    G --> H["5. End: A clean .txt file is saved to the computer"];
+    F --> G["The text is cleaned and structured"];
+    G --> H["End: A clean .txt file is saved to the computer"];
 ```
 
 ### Stage 1: Initiation
