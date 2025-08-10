@@ -27,22 +27,12 @@
         Save .txt
       </button>
       <button
-        id="aiOrganizeBtn"
+        id="scrapeLinksBtn"
         class="extract-btn"
-        aria-label="Organize extracted text with AI"
-        title="Organize (AI)"
-        style="display:none"
+        aria-label="Scrape external links in current page"
+        title="Open each link, extract, and auto-save"
       >
-        Organize (AI)
-      </button>
-      <button
-        id="oneClickBtn"
-        class="extract-btn"
-        aria-label="One click: extract, organize with AI, and save"
-        title="One-Click Save"
-        style="display:none"
-      >
-        One-Click
+        Scrape Links
       </button>
       <div id="extract-help" class="sr-only">
         Extracts visible text content from the current webpage for processing
@@ -166,7 +156,6 @@
         >
           <option value="raw">Raw Text</option>
           <option value="clean" selected>Clean Text</option>
-          <option value="llm">LLM Format</option>
           <option value="json">JSON Format</option>
         </select>
         <div id="format-help" class="sr-only">
@@ -213,14 +202,6 @@
         </label>
       </div>
 
-      <div class="output-format" role="group" aria-labelledby="ai-toggle-label">
-        <label id="ai-toggle-label" for="enableAiToggle">Enable AI Features:</label>
-        <input type="checkbox" id="enableAiToggle" aria-describedby="ai-toggle-help">
-        <button type="button" id="manageApiKeysBtn" class="browse-btn" aria-label="Manage API keys">Manage API Keys</button>
-        <div id="ai-toggle-help" class="sr-only">
-          When enabled and consented, extracted text may be sent to external AI services to organize content
-        </div>
-      </div>
       
       <div class="save-location" role="group" aria-labelledby="location-label">
         <label id="location-label" for="saveLocation">Save Location:</label>
@@ -273,16 +254,6 @@
         <div class="stats">
           <span id="wordCount">0 words</span>
           <span id="charCount">0 characters</span>
-        </div>
-        <div id="formatSwitch" class="format-switch" role="tablist" aria-label="Output format switch">
-          <button type="button" class="pill active" data-format="clean" role="tab" aria-selected="true">Clean</button>
-          <button type="button" class="pill" data-format="raw" role="tab" aria-selected="false">Raw</button>
-          <button type="button" class="pill" data-format="llm" role="tab" aria-selected="false">Structured</button>
-            <button type="button" class="pill" data-format="json" role="tab" aria-selected="false">JSON</button>
-        </div>
-        <div id="llmProgress" class="progress hidden" aria-live="polite">
-          <div class="bar indeterminate" id="llmProgressBar"></div>
-          <span id="llmProgressLabel" class="progress-label">Working...</span>
         </div>
         
         <textarea 
@@ -339,16 +310,5 @@
   <script src="text-processor.js"></script>
   <script src="popup.js"></script>
 
-  <!-- AI Consent Modal -->
-  <div id="aiConsentModal" class="hidden" role="dialog" aria-modal="true" aria-labelledby="aiConsentTitle" aria-describedby="aiConsentDesc" style="position:fixed;inset:0;background:rgba(0,0,0,0.4);display:flex;align-items:center;justify-content:center;">
-    <div style="background:#fff;padding:16px;border-radius:8px;max-width:360px;width:90%;box-shadow:0 6px 24px rgba(0,0,0,0.2);">
-      <h3 id="aiConsentTitle" style="margin-bottom:8px;">Enable AI Features</h3>
-      <p id="aiConsentDesc" style="font-size:13px;color:#444;">When using AI features, extracted text and optional tables may be sent to external services (Google Gemini and/or DigitalOcean Inference) to organize content. Proceed only if you consent.</p>
-      <div style="display:flex;gap:8px;justify-content:flex-end;margin-top:12px;">
-        <button id="aiConsentCancel" class="btn btn-tertiary">Cancel</button>
-        <button id="aiConsentAccept" class="btn btn-secondary">I Understand</button>
-      </div>
-    </div>
-  </div>
 </body>
 </html>

@@ -4,29 +4,41 @@
   "short_name": "Text Extractor",
   "version": "1.0.1",
   "description": "Extract and clean text content from web pages",
-  "homepage_url": "https://github.com/codermillat/WebScrape", 
+  "homepage_url": "https://example.com", 
   "content_security_policy": {
-    "extension_pages": "script-src 'self'; object-src 'none'; connect-src 'self' https://generativelanguage.googleapis.com https://inference.do-ai.run"
+    "extension_pages": "script-src 'self'; object-src 'none'; connect-src 'self' https: http:"
   },
   "permissions": [
     "activeTab",
+    "tabs",
     "scripting",
     "downloads",
-    "storage"
+    "storage",
+    "offscreen",
+    "declarativeNetRequest"
   ],
   "host_permissions": [
-    "https://generativelanguage.googleapis.com/*",
-    "https://inference.do-ai.run/*"
+    "*://*/*"
   ],
+  "declarative_net_request": {
+    "rule_resources": [
+      {
+        "id": "ruleset_1",
+        "enabled": true,
+        "path": "rules.json"
+      }
+    ]
+  },
   "action": {
-    "default_title": "Extract Text",
-    "default_popup": "popup.html"
+    "default_title": "Extract Text"
   },
   "content_scripts": [
     {
       "matches": ["https://*/*", "http://*/*"],
       "js": ["content.js"],
-      "run_at": "document_start"
+      "run_at": "document_start",
+      "all_frames": true,
+      "match_about_blank": true
     }
   ],
   "options_page": "options.html",

@@ -1,40 +1,40 @@
 # Privacy Policy - Web Text Extractor
 
-Last Updated: 2025-08-09
+Last Updated: 2025-08-11
 
-## Data Collection
-- The extension does not collect, transmit, or sell personal data.
-- All text extraction and processing occur locally in your browser by default.
+This privacy policy outlines the data handling practices of the "Web Text Extractor" Chrome extension. As a tool designed for a research project, maintaining user privacy and data security is a top priority.
 
-## Data Storage
-- Extracted content is kept in-memory within the extension popup only for your current session.
-- User preferences (e.g., chosen save location, feature toggles) are stored using `chrome.storage.local` and, when available, a directory handle is stored in IndexedDB for your device only.
-- API keys that you enter for optional AI features are stored only in `chrome.storage.local` on your device.
+## 1. Data Collection & Processing
 
-## Permissions
-- `activeTab`: Access the current tab when you interact with the extension.
-- `scripting`: Inject the content script into the current tab on demand.
-- `downloads`: Save extracted files to your Downloads folder.
-- `storage`: Remember your extension preferences.
-  
-Note: No broad host permissions are requested. Content script injection occurs only on user action (via `activeTab` + `scripting`).
+**All data processing is performed locally on your computer.**
 
-## File System Access
-If you choose a custom folder, the extension requests access to a directory using the File System Access API. This access is:
-- Granted explicitly by you via a browser prompt
-- Limited to the selected folder
-- Revocable at any time by removing permissions or clearing site data
+*   The extension **does not** collect, transmit, or store any of your personal data on any external server.
+*   When you extract text from a webpage, the entire process—from extraction to cleaning and formatting—happens within your browser.
 
-## Third Parties
-- No data is sent to external servers or third parties unless you enable AI features and provide API keys.
-- When AI features are enabled and you consent, the extension may send extracted text and optional structured tables to:
-  - Google Generative Language API: `https://generativelanguage.googleapis.com`
-  - DigitalOcean Inference: `https://inference.do-ai.run`
-  The content sent includes only the text you extracted from the current page (and optional table summaries) to organize/clean the data.
+## 2. Data Storage
 
-You can disable AI features or revoke consent at any time in the extension settings/options.
+The extension uses your browser's local storage mechanisms to function.
 
-## Contact
-For questions or support, contact the developer of this extension.
+*   **Extracted Content**: The text you extract is held temporarily in your browser's memory for the duration of your session with the extension's popup. It is discarded when the popup is closed.
+*   **User Settings**: Your preferences for how to process the text (e.g., whether to remove duplicates) are saved on your computer using the `chrome.storage.local` API. This is for your convenience, so your settings are remembered for future use. This data is not transmitted anywhere.
 
+## 3. Permissions
 
+The extension requests a minimal set of permissions required for its core functionality. Here is a clear explanation of why each permission is needed:
+
+*   **`activeTab` & `tabs`**: To allow the extension to run on the webpage you are currently viewing when you click the extension icon.
+*   **`scripting`**: To inject the necessary code (`content.js`) into the webpage to extract its text content.
+*   **`downloads`**: To allow you to save the processed `.txt` files to your computer.
+*   **`storage`**: To save your settings locally on your machine.
+*   **`offscreen`**: To use a non-visible document for processing PDF files, which is a requirement of the Manifest V3 architecture.
+*   **`declarativeNetRequest`**: To block known advertising and tracking domains (as defined in `rules.json`), which helps in collecting cleaner data.
+
+## 4. Third-Party Services
+
+**This extension does not send any data to third-party services.**
+
+The tool is designed to be a self-contained data collection and preprocessing utility. There is no integration with any external AI or data processing APIs.
+
+## 5. Contact
+
+For any questions or concerns regarding this privacy policy or the extension's data handling practices, please refer to the contact information available in the project's repository on GitHub.

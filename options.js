@@ -1,44 +1,62 @@
 (function() {
   'use strict';
 
-  async function $(id) { return document.getElementById(id); }
+  function $(id) { return document.getElementById(id); }
 
   async function load() {
-    const { geminiApiKey, doApiKey, aiEnabled, aiConsentGranted, ui_fullPage, ui_excludeBoilerplate, ui_includeMetadata } = await chrome.storage.local.get(['geminiApiKey', 'doApiKey', 'aiEnabled', 'aiConsentGranted', 'ui_fullPage', 'ui_excludeBoilerplate', 'ui_includeMetadata']);
-    (await $('geminiKey')).value = geminiApiKey || '';
-    (await $('doKey')).value = doApiKey || '';
-    (await $('enableAi')).checked = !!aiEnabled;
-    (await $('optFullPage')).checked = !!ui_fullPage;
-    (await $('optExcludeBoiler')).checked = !!ui_excludeBoilerplate;
-    (await $('optIncludeMetadata')).checked = typeof ui_includeMetadata === 'boolean' ? ui_includeMetadata : true;
+    try {
+      const {
+        ui_fullPage,
+        ui_excludeBoilerplate,
+        ui_includeMetadata
+      } = await chrome.storage.local.get([
+        'ui_fullPage',
+        'ui_excludeBoilerplate',
+        'ui_includeMetadata'
+      ]);
+
+      const full = $('optFullPage');
+      const excl = $('optExcludeBoiler');
+      const meta = $('optIncludeMetadata');
+
+      if (full) full.checked = !!ui_fullPage;
+      if (excl) excl.checked = !!ui_excludeBoilerplate;
+      if (meta) meta.checked = typeof ui_includeMetadata === 'boolean' ? ui_includeMetadata : true;
+    } catch (e) {
+      console.warn('Options load failed:', e);
+    }
   }
 
   async function save() {
-    const geminiKey = (await $('geminiKey')).value.trim();
-    const doKey = (await $('doKey')).value.trim();
-    const enableAi = (await $('enableAi')).checked;
-    const ui_fullPage = (await $('optFullPage')).checked;
-    const ui_excludeBoilerplate = (await $('optExcludeBoiler')).checked;
-    const ui_includeMetadata = (await $('optIncludeMetadata')).checked;
-    await chrome.storage.local.set({ geminiApiKey: geminiKey || undefined, doApiKey: doKey || undefined, aiEnabled: enableAi, ui_fullPage, ui_excludeBoilerplate, ui_includeMetadata });
-    const status = await $('status');
-    status.textContent = 'Saved successfully';
-    setTimeout(() => status.textContent = '', 2000);
-  }
+    try {
+      const full = $('optFullPage')?.checked ?? false;
+      const excl = $('optExcludeBoiler')?.checked ?? false;
+      const meta = $('optIncludeMetadata')?.checked ?? true;
 
-  async function clearKeys() {
-    await chrome.storage.local.set({ geminiApiKey: undefined, doApiKey: undefined });
-    (await $('geminiKey')).value = '';
-    (await $('doKey')).value = '';
-    const status = await $('status');
-    status.textContent = 'Keys cleared';
-    setTimeout(() => status.textContent = '', 2000);
+      await chrome.storage.local.set({
+        ui_fullPage: full,
+        ui_excludeBoilerplate: excl,
+        ui_includeMetadata: meta
+      });
+
+      const status = $('status');
+      if (status) {
+        status.textContent = 'Saved successfully';
+        setTimeout(() => { status.textContent = ''; }, 2000);
+      }
+    } catch (e) {
+      console.error('Options save failed:', e);
+      const status = $('status');
+      if (status) {
+        status.style.color = '#c62828';
+        status.textContent = 'Save failed';
+        setTimeout(() => { status.textContent = ''; status.style.color = '#2d8f42'; }, 2500);
+      }
+    }
   }
 
   document.addEventListener('DOMContentLoaded', async () => {
     await load();
-    (await $('saveBtn')).addEventListener('click', save);
-    (await $('clearBtn')).addEventListener('click', clearKeys);
+    $('saveBtn')?.addEventListener('click', save);
   });
 })();
-

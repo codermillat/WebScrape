@@ -1,0 +1,13 @@
+[
+  {
+    "id": 1,
+    "priority": 1,
+    "action": {
+      "type": "block"
+    },
+    "condition": {
+      "urlFilter": "||doubleclick.net",
+      "resourceTypes": ["main_frame", "sub_frame", "script", "image", "stylesheet", "object", "xmlhttprequest", "ping", "csp_report", "media", "websocket", "other"]
+    }
+  }
+]

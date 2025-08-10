@@ -3,7 +3,7 @@
   'use strict';
 
   // Increment this when content script behavior changes
-  const CONTENT_SCRIPT_VERSION = '2';
+  const CONTENT_SCRIPT_VERSION = '3';
 
   /**
    * Check if an element is visible
@@ -91,6 +91,114 @@
       document.querySelector('article')
     ].filter(Boolean);
     return candidates[0] || document.body;
+  }
+
+  // Heuristic boilerplate detector (headers, footers, navs, breadcrumbs, sidebars)
+  function isBoilerplateElement(el) {
+    try {
+      const sels = [
+        'header','footer','nav','aside',
+        '[role="navigation"]','[aria-label*="breadcrumb" i]',
+        '.breadcrumb','.breadcrumbs','.menu','.navbar',
+        '.sidebar','.site-header','.site-footer','.topbar'
+      ];
+      return sels.some(s => el.closest && el.closest(s));
+    } catch (_) { return false; }
+  }
+
+  // Positional header/footer filter
+  function isInHeaderFooterZone(el) {
+    try {
+      if (!el || !el.getBoundingClientRect) return false;
+      const rect = el.getBoundingClientRect();
+      const vh = Math.max(window.innerHeight || 0, document.documentElement.clientHeight || 0);
+      const nearTop = rect.top < 140;
+      const nearBottom = rect.bottom > (vh - 180);
+      const inHeader = el.closest && (el.closest('header,[role="banner"],nav') != null);
+      const inFooter = el.closest && (el.closest('footer,[role="contentinfo"]') != null);
+      return (nearTop && inHeader) || (nearBottom && inFooter) || inHeader || inFooter;
+    } catch (_) { return false; }
+  }
+
+  // Find the main content container to reduce header/footer/menu noise
+  function findMainContentContainer() {
+    try {
+      const prefer = [
+        'main','[role="main"]','article','#content','.content',
+        '#primary','.main','.main-content','.content-area','.site-content'
+      ];
+      const direct = prefer.map(sel => document.querySelector(sel)).filter(Boolean);
+      const pool = direct.length
+        ? direct
+        : Array.from(document.querySelectorAll('main, article, #content, .content, #primary, .site-content, .container'));
+      let best = selectMainContainer();
+      let bestScore = 0;
+      for (const el of pool) {
+        if (!el) continue;
+        const textLen = ((el.innerText || el.textContent || '').replace(/\s+/g, ' ').trim()).length;
+        const penalty = (el.querySelectorAll('nav, header, footer, .sidebar, [role="navigation"], .menu, .breadcrumbs, .breadcrumb').length || 0) * 200;
+        const score = textLen - penalty;
+        if (score > bestScore) { bestScore = score; best = el; }
+      }
+      return best || selectMainContainer();
+    } catch (_) { return selectMainContainer(); }
+  }
+
+  // Extract text within a specific root to avoid global boilerplate
+  function extractDomOrderedTextWithin(root, includeHidden = false) {
+    try {
+      const selector = [
+        'h1','h2','h3','h4','h5','h6',
+        'p','li','table','blockquote','dt','dd','figcaption'
+      ].join(',');
+      const nodes = Array.from((root || document).querySelectorAll(selector));
+      const lines = [];
+      let last = '';
+
+      nodes.forEach(node => {
+        if (isBoilerplateElement(node)) return;
+        if (!shouldIncludeElement(node, includeHidden)) return;
+        if (isInHeaderFooterZone(node)) return;
+
+        if (node.tagName === 'TABLE') {
+          const tblRows = [];
+          const trs = node.querySelectorAll('tr');
+          trs.forEach(tr => {
+            const cells = Array.from(tr.querySelectorAll('th,td'))
+              .map(c => cleanText(c.textContent).replace(/\s*:\s*$/,'').replace(/^[:\-\s]+/,''))
+              .filter(Boolean);
+            if (cells.length === 2) {
+              tblRows.push(`${cells[0]}: ${cells[1]}`);
+            } else if (cells.length > 0) {
+              tblRows.push(cells.join(' | '));
+            }
+          });
+          if (tblRows.length) {
+            tblRows.forEach(row => {
+              if (row && row !== last) {
+                lines.push(row);
+                last = row;
+              }
+            });
+          }
+          return;
+        }
+
+        let text = cleanText(node.textContent || '');
+        if (!text) return;
+        if (node.tagName === 'LI') {
+          text = `• ${text}`;
+        }
+        if (text && text !== last) {
+          lines.push(text);
+          last = text;
+        }
+      });
+
+      return lines.join('\n');
+    } catch (_) {
+      return '';
+    }
   }
 
   function getContainerSignature(el) {
@@ -223,6 +331,227 @@
       } catch (_) { break; }
     }
     return Array.from(results).join('\n');
+  }
+
+  // In-page dynamic pagination collector (click through tabs/numbers within same URL)
+  function discoverInPagePagers() {
+    const main = selectMainContainer();
+    const els = Array.from(main.querySelectorAll('a,button,[role="tab"], .page-link, .page-numbers a, .pagination a, .page-item, [data-page], [data-index]'));
+    const numbered = [];
+    const nexters = [];
+    els.forEach(el => {
+      const t = (el.textContent || '').trim();
+      if (/^\d+$/.test(t)) numbered.push(el);
+      else if (/(next|»|›)/i.test(t) || el.getAttribute('rel') === 'next') nexters.push(el);
+    });
+    return { numbered, nexters };
+  }
+
+  async function collectDynamicAllText(limit = 50) {
+    try {
+      const main = selectMainContainer();
+      const seenSigs = new Set();
+      const out = new Set();
+      const addText = (text) => {
+        if (!text) return;
+        text.split(/\n+/).forEach(s => { const t = s.trim(); if (t) out.add(t); });
+      };
+
+      addText(extractDomOrderedText(true));
+      seenSigs.add(getContainerSignature(main));
+
+      const { numbered, nexters } = discoverInPagePagers();
+      const pageNumbers = Array.from(new Set(numbered.map(el => parseInt((el.textContent || '').trim(), 10)).filter(n => !Number.isNaN(n))))
+        .sort((a, b) => a - b)
+        .slice(0, limit);
+
+      for (const n of pageNumbers) {
+        const el = numbered.find(e => parseInt((e.textContent || '').trim(), 10) === n);
+        if (!el) continue;
+        try {
+          const prev = getContainerSignature(main);
+          el.click();
+          await new Promise(r => setTimeout(r, 150));
+          const changed = await waitForContentMutation(main, prev, 1500);
+          if (!changed) continue;
+          const sig = getContainerSignature(main);
+          if (seenSigs.has(sig)) continue;
+          seenSigs.add(sig);
+          addText(extractDomOrderedText(true));
+        } catch (_) {}
+      }
+
+      let safety = limit;
+      while (safety-- > 0 && nexters[0]) {
+        try {
+          const prev = getContainerSignature(main);
+          nexters[0].click();
+          await new Promise(r => setTimeout(r, 150));
+          const changed = await waitForContentMutation(main, prev, 1500);
+          if (!changed) break;
+          const sig = getContainerSignature(main);
+          if (seenSigs.has(sig)) break;
+          seenSigs.add(sig);
+          addText(extractDomOrderedText(true));
+        } catch (_) { break; }
+      }
+
+      return Array.from(out).join('\n');
+    } catch (_) {
+      return extractDomOrderedText(true);
+    }
+  }
+
+  // Special handling for Sharda course-fee (two-phase state machine)
+  function isShardaCourseFeePage() {
+    try {
+      const u = new URL(location.href);
+      return /sharda\.ac\.in$/i.test(u.hostname) && u.pathname.replace(/\/+$/,'') === '/course-fee';
+    } catch (_) { return false; }
+  }
+
+  function _textMatch(el, re) {
+    try { return re.test((el.textContent || el.innerText || '').trim()); } catch(_) { return false; }
+  }
+
+  function findListRootSharda() {
+    try {
+      const pool = Array.from(document.querySelectorAll('main, #content, .content, #main, article, .container, .row, body *'));
+      let best = null, bestScore = 0;
+      for (const c of pool.slice(0, 500)) {
+        const btns = c.querySelectorAll('a,button');
+        let score = 0;
+        btns.forEach(b => { if (_textMatch(b, /(yearly\s*fee|semester\s*fee)/i)) score++; });
+        if (score > bestScore) { bestScore = score; best = c; }
+      }
+      return best || selectMainContainer();
+    } catch (_) { return selectMainContainer(); }
+  }
+
+  function getPagerNear(root) {
+    const zones = new Set();
+    let a = root;
+    for (let i = 0; i < 4 && a; i++, a = a.parentElement) zones.add(a);
+    const all = Array.from(document.querySelectorAll('ul.pagination, .pagination, nav[aria-label*="pagination" i], .page-numbers'));
+    const cand = all.filter(p => {
+      let x = p, d = 0;
+      while (x && d < 6) { if (zones.has(x)) return true; x = x.parentElement; d++; }
+      return false;
+    });
+    const pager = cand[0] || all[0] || null;
+    if (!pager) return { pager: null, numbers: [], next: null };
+    const anchors = Array.from(pager.querySelectorAll('a,button'));
+    const numbers = anchors.filter(el => /^\d+$/.test((el.textContent || '').trim()));
+    const next = anchors.find(el => /(next|»|›)/i.test(el.textContent || el.getAttribute('aria-label') || ''));
+    return { pager, numbers, next };
+  }
+
+  function getActivePageNumberNear(root) {
+    try {
+      const { pager } = getPagerNear(root);
+      if (!pager) return null;
+      const cur = pager.querySelector('.active, [aria-current="page"], .current');
+      const t = (cur?.textContent || '').trim();
+      const n = parseInt(t, 10);
+      return Number.isFinite(n) ? n : null;
+    } catch (_) { return null; }
+  }
+
+  async function clickPagerNumberNear(root, number, timeout = 2500) {
+    const { pager } = getPagerNear(root);
+    if (!pager) return false;
+    const el = Array.from(pager.querySelectorAll('a,button')).find(a => parseInt((a.textContent || '').trim(), 10) === number);
+    if (!el) return false;
+    const prev = getContainerSignature(root);
+    el.click();
+    await new Promise(r => setTimeout(r, 120));
+    const changed = await waitForContentMutation(root, prev, timeout);
+    return !!changed;
+  }
+
+  async function drillDownFeesInList(root) {
+    const toggles = Array.from(root.querySelectorAll('a,button')).filter(el => _textMatch(el, /(yearly\s*fee|semester\s*fee)/i));
+    const seenParents = new WeakSet();
+    for (const el of toggles) {
+      try {
+        const parent = el.closest('.card, li, .course, .program, .programme, .row, .col') || root;
+        if (seenParents.has(parent)) continue;
+        seenParents.add(parent);
+        const prev = getContainerSignature(parent);
+        el.click();
+        await new Promise(r => setTimeout(r, 80));
+        await waitForContentMutation(parent, prev, 900);
+      } catch (_) {}
+    }
+  }
+
+  async function scrapeShardaCourseFees(options = {}) {
+    const maxPages = typeof options.maxPages === 'number' ? options.maxPages : 50;
+    const listRoot = findListRootSharda();
+
+    const out = new Set();
+    const addText = (txt) => {
+      if (!txt) return;
+      txt.split(/\n+/).forEach(s => { const t = s.trim(); if (t) out.add(t); });
+    };
+
+    const visited = new Set();
+    let safety = maxPages;
+    let active = getActivePageNumberNear(listRoot);
+    if (!Number.isFinite(active) || active <= 0) active = 1;
+
+    while (safety-- > 0) {
+      if (!visited.has(active)) {
+        await drillDownFeesInList(listRoot);
+        addText(extractDomOrderedTextWithin(listRoot, true));
+        visited.add(active);
+      }
+
+      const { pager } = getPagerNear(listRoot);
+      if (!pager) break;
+
+      const desired = active + 1;
+
+      // Prefer clicking the numeric next page (active+1); fallback to "Next"
+      const buttons = Array.from(pager.querySelectorAll('a,button'));
+      let target = buttons.find(a => parseInt((a.textContent || '').trim(), 10) === desired) ||
+                   buttons.find(a => /(next|»|›)/i.test(a.textContent || a.getAttribute('aria-label') || ''));
+
+      if (!target) break;
+
+      const prevSig = getContainerSignature(listRoot);
+      target.click();
+      await new Promise(r => setTimeout(r, 120));
+      const changed = await waitForContentMutation(listRoot, prevSig, 2500);
+      if (!changed) break;
+
+      let newActive = getActivePageNumberNear(listRoot);
+      if (!Number.isFinite(newActive)) newActive = active;
+
+      // If pager reflows and we didn't advance, try to locate the smallest unseen number > current
+      if (newActive <= active || visited.has(newActive)) {
+        const nums = buttons
+          .map(a => parseInt((a.textContent || '').trim(), 10))
+          .filter(n => Number.isFinite(n) && !visited.has(n));
+        const candidates = nums.filter(n => n > active);
+        const nextNum = (candidates.length ? Math.min(...candidates) : Math.min(...nums.filter(n => !visited.has(n)) || [NaN]));
+        if (Number.isFinite(nextNum) && nextNum !== active) {
+          const el = buttons.find(a => parseInt((a.textContent || '').trim(), 10) === nextNum);
+          if (el) {
+            const sig2 = getContainerSignature(listRoot);
+            el.click();
+            await new Promise(r => setTimeout(r, 120));
+            await waitForContentMutation(listRoot, sig2, 2500);
+            newActive = getActivePageNumberNear(listRoot) ?? nextNum;
+          }
+        }
+      }
+
+      if (newActive === active || visited.has(newActive)) break;
+      active = newActive;
+    }
+
+    return Array.from(out).join('\n');
   }
 
   function extractDomOrderedTextFromDoc(doc) {
@@ -454,6 +783,62 @@
     }
   }
 
+  // Collect embedded PDF URLs from the page (embed/object/iframe/anchors)
+  function collectEmbeddedPdfUrls() {
+    try {
+      const out = [];
+      const seen = new Set();
+      const base = location.href;
+      const pushAbs = (u) => {
+        try {
+          const abs = new URL(u, base).toString();
+          const key = abs.split('#')[0];
+          if (seen.has(key)) return;
+          if (/\.pdf(?:$|[?#])/i.test(abs)) {
+            seen.add(key); out.push(abs);
+          }
+        } catch (_) {}
+      };
+      const embeds = document.querySelectorAll('embed[type="application/pdf"], object[type="application/pdf"], iframe[src$=".pdf"], iframe[src*=".pdf?"], iframe[src*=".pdf#"]');
+      embeds.forEach(el => {
+        const src = el.getAttribute('src') || el.getAttribute('data') || '';
+        if (src) pushAbs(src);
+      });
+      // Anchor fallbacks
+      document.querySelectorAll('a[href$=".pdf"], a[href*=".pdf?"], a[href*=".pdf#"]').forEach(a => {
+        const href = a.getAttribute('href') || '';
+        if (href) pushAbs(href);
+      });
+      return out;
+    } catch (_) { return []; }
+  }
+
+  // Derive real PDF URL when viewing via Chrome/Edge built-in PDF viewer
+  function derivePdfUrlFromLocation() {
+    try {
+      const tabUrl = window.location.href || '';
+      if (!tabUrl) return '';
+      const u = new URL(tabUrl);
+      // Direct PDF only if pathname ends with .pdf
+      if (u.pathname && u.pathname.toLowerCase().endsWith('.pdf')) {
+        return u.toString();
+      }
+      // Chrome/Edge PDF viewer: src= or file= query contains the real URL
+      if (u.protocol === 'chrome-extension:' || u.protocol === 'edge:') {
+        const q = u.searchParams.get('src') || u.searchParams.get('file') || '';
+        if (!q) return '';
+        const qUrl = new URL(q, tabUrl);
+        if ((qUrl.protocol === 'http:' || qUrl.protocol === 'https:') &&
+            qUrl.pathname.toLowerCase().endsWith('.pdf')) {
+          return qUrl.toString();
+        }
+      }
+      return '';
+    } catch (_) {
+      return '';
+    }
+  }
+  
   // Build a full-page structured extraction with metadata and sections
   function extractStructuredPage(options = {}) {
     const {
@@ -516,12 +901,23 @@
       }
     }
 
+    // Embedded PDFs on page
+    try {
+      const pdfs = collectEmbeddedPdfUrls();
+      if (pdfs.length) {
+        lines.push('== Embedded PDFs ==');
+        pdfs.slice(0, 50).forEach((u, i) => lines.push(`PDF ${i+1}: ${u}`));
+        lines.push('');
+      }
+    } catch (_) {}
+
     // Headings
     const headingNodes = Array.from(document.querySelectorAll('h1,h2,h3,h4,h5,h6'));
     const headingOut = [];
     headingNodes.forEach(h => {
       if (!shouldIncludeElement(h, includeHidden)) return;
       if (isBoilerplate(h)) return;
+      if (isInHeaderFooterZone(h)) return;
       const txt = cleanText(h.textContent || '');
       if (!txt) return;
       headingOut.push(`${h.tagName.toUpperCase()}: ${txt}`);
@@ -538,6 +934,7 @@
     pbNodes.forEach(n => {
       if (!shouldIncludeElement(n, includeHidden)) return;
       if (isBoilerplate(n)) return;
+      if (isInHeaderFooterZone(n)) return;
       const txt = cleanText(n.textContent || '');
       if (!txt) return;
       const prefix = n.tagName === 'BLOCKQUOTE' ? '> ' : '';
@@ -555,6 +952,7 @@
     listItems.forEach(li => {
       if (!shouldIncludeElement(li, includeHidden)) return;
       if (isBoilerplate(li)) return;
+      if (isInHeaderFooterZone(li)) return;
       const txt = cleanText(li.textContent || '');
       if (!txt) return;
       listOut.push(`• ${txt}`);
@@ -951,6 +1349,58 @@
           });
         }
       }
+      if (request.action === 'scrapeExternalLinks') {
+        // Collect external/eligible links, limited by request.limit
+        try {
+          const limit = Math.max(1, Math.min(50, Number(request.limit) || 10));
+          const onlySameHost = !!request.onlySameHost;
+          const cur = new URL(location.href);
+          const anchors = Array.from(document.querySelectorAll('a[href]'));
+          const urls = [];
+          const seen = new Set();
+          for (const a of anchors) {
+            const href = (a.getAttribute('href') || '').trim();
+            if (!href || href.startsWith('javascript:') || href === '#') continue;
+            let abs = '';
+            try { abs = new URL(href, cur.href).toString(); } catch { continue; }
+            try {
+              const u = new URL(abs);
+              if (!(u.protocol === 'http:' || u.protocol === 'https:')) continue;
+              if (onlySameHost && u.hostname !== cur.hostname) continue;
+              // skip obvious nav/boilerplate links
+              const text = cleanText(a.textContent || '');
+              if (!text && (u.pathname === '/' || u.pathname === cur.pathname)) continue;
+              const key = abs.split('#')[0];
+              if (seen.has(key)) continue;
+              seen.add(key);
+              urls.push(abs);
+            } catch (_) { continue; }
+            if (urls.length >= limit) break;
+          }
+          // Prioritize embedded PDFs discovered in the page
+          try {
+            const pdfs = collectEmbeddedPdfUrls();
+            for (const u of pdfs) {
+              if (urls.length >= limit) break;
+              const key = u.split('#')[0];
+              if (!seen.has(key)) { seen.add(key); urls.push(u); }
+            }
+          } catch (_) {}
+
+          chrome.runtime.sendMessage({ type: 'scrapeUrlBatch', urls, options: { active: false, closeAfter: true, includeHidden: true, autoScroll: true } })
+            .then(resp => {
+              sendResponse({ success: !!resp?.ok, results: resp?.results || [] });
+            })
+            .catch(err => {
+              sendResponse({ success: false, error: err?.message || 'scrapeUrlBatch dispatch failed' });
+            });
+          return true;
+        } catch (e) {
+          sendResponse({ success: false, error: e?.message || 'collect links failed' });
+          return true;
+        }
+      }
+
       if (request.action === 'extractStructured') {
         try {
           const { includeHidden, excludeBoilerplate, includeMetadata, autoScroll } = request;
@@ -1075,11 +1525,72 @@
         try { inline = extractCoursesFromWindowGlobal(); } catch (_) {}
       }
       // Preserve DOM order for better context, merge with pagination/json fees
-      const domOrderedText = extractDomOrderedText(true /* force include hidden for completeness */);
+      const mainRoot = findMainContentContainer();
+      const domOrderedText = extractDomOrderedTextWithin(mainRoot, true /* force include hidden for completeness */);
       const combinedText = [domOrderedText, extraFees, inline].filter(Boolean).join('\n').trim();
       const formattedText = combinedText && combinedText.length > 0 ? combinedText : formatContentAsText(content);
       
       if (!formattedText || formattedText.trim().length === 0) {
+        // Final fallbacks: visible text nodes, then raw innerText dump
+        try {
+          const visibleText = (function collectAllVisibleText(){
+            try {
+              const walker = document.createTreeWalker(document.body, NodeFilter.SHOW_TEXT, {
+                acceptNode(node) {
+                  const s = (node.nodeValue || '').replace(/\s+/g,' ').trim();
+                  if (!s) return NodeFilter.FILTER_REJECT;
+                  const el = node.parentElement;
+                  if (!el) return NodeFilter.FILTER_REJECT;
+                  if (/^(script|style|noscript|iframe|object|embed)$/i.test(el.tagName)) return NodeFilter.FILTER_REJECT;
+                  const cs = getComputedStyle(el);
+                  if (cs.display === 'none' || cs.visibility === 'hidden' || cs.opacity === '0') return NodeFilter.FILTER_REJECT;
+                  return NodeFilter.FILTER_ACCEPT;
+                }
+              });
+              const parts = [];
+              let n;
+              while ((n = walker.nextNode())) {
+                const t = (n.nodeValue || '').replace(/\s+/g,' ').trim();
+                if (t) parts.push(t);
+                if (parts.length > 8000) break; // guard
+              }
+              return cleanText(parts.join('\n'));
+            } catch (_) {
+              return '';
+            }
+          })();
+
+          if (visibleText && visibleText.trim().length >= 20) {
+            console.log('[WTE][performExtraction] using visibleText fallback', { len: visibleText.length });
+            sendResponse({
+              success: true,
+              text: visibleText,
+              url: window.location.href,
+              title: document.title || '',
+              tables: [],
+              timestamp: new Date().toISOString()
+            });
+            return;
+          }
+
+          const rawDump = ((document.body && (document.body.innerText || document.body.textContent)) || '').replace(/\r\n?/g,'\n');
+          const rawClean = cleanText(rawDump);
+          if (rawClean && rawClean.trim().length >= 10) {
+            console.log('[WTE][performExtraction] using rawDump fallback', { len: rawClean.length });
+            sendResponse({
+              success: true,
+              text: rawClean,
+              url: window.location.href,
+              title: document.title || '',
+              tables: [],
+              timestamp: new Date().toISOString()
+            });
+            return;
+          }
+        } catch (e) {
+          console.warn('[WTE][performExtraction] fallbacks errored', e?.message || e);
+        }
+
         sendResponse({
           success: false,
           error: 'No readable content found on this page'
@@ -1160,6 +1671,7 @@
         .toolbar { display:flex; gap:6px; flex-wrap:wrap; }
         .caret { border:none; background:transparent; cursor:pointer; font-size:14px; line-height:1; padding:0 4px; }
         .collapsed .caps { display:none; }
+        .domain-group.collapsed .page { display: none; }
         .overlay { position:absolute; inset:0; background:rgba(248,250,252,0.8); display:none; align-items:center; justify-content:center; }
         .spinner { width:22px; height:22px; border:3px solid #cbd5e1; border-top-color:#0ea5e9; border-radius:50%; animation:spin 0.9s linear infinite; }
         @keyframes spin { to { transform: rotate(360deg); } }
@@ -1176,10 +1688,8 @@
           <div class="title">Web Text Extractor – Sider</div>
           <div class="toolbar">
             <button id="wte-add" class="btn success" title="Add current tab content">Add</button>
-            <button id="wte-process" class="btn primary">Process LLM</button>
-            <button id="wte-dl-raw" class="btn">Download Raw</button>
-            <button id="wte-dl-llm" class="btn">Download LLM</button>
-            <button id="wte-clear-site" class="btn danger" title="Remove all for this site">Clear site</button>
+                        <button id="wte-dl-raw" class="btn">Download Raw</button>
+                        <button id="wte-clear-site" class="btn danger" title="Remove all for this site">Clear site</button>
             <button id="wte-settings" class="btn" title="Open Options">Settings</button>
           </div>
         </div>
@@ -1235,113 +1745,7 @@
         });
       }
 
-      // AI consent gating
-      async function isAiAllowed() {
-        try {
-          const { aiEnabled, aiConsentGranted } = await chrome.storage.local.get(['aiEnabled','aiConsentGranted']);
-          return !!aiEnabled && !!aiConsentGranted;
-        } catch (_) { return false; }
-      }
-
-      // Show AI consent modal
-      function showAiConsentModal() {
-        return new Promise((resolve) => {
-          const modal = document.createElement('div');
-          modal.style.cssText = `
-            position: fixed; top: 0; left: 0; width: 100%; height: 100%;
-            background: rgba(0,0,0,0.8); z-index: 999999; display: flex;
-            align-items: center; justify-content: center; font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
-          `;
-          modal.innerHTML = `
-            <div style="background: white; padding: 32px; border-radius: 16px; max-width: 520px; margin: 20px; box-shadow: 0 24px 48px rgba(0,0,0,0.4); text-align: center;">
-              <div style="font-size: 48px; margin-bottom: 16px;">🧠</div>
-              <h3 style="margin: 0 0 16px 0; color: #1a1a1a; font-size: 20px; font-weight: 600;">Enable AI Features</h3>
-              <p style="margin: 0 0 24px 0; color: #666; line-height: 1.6; font-size: 15px;">
-                AI features will send your extracted text to external services (DigitalOcean AI and Google Gemini) for processing and organization. 
-                Your data will be processed according to their respective privacy policies.
-              </p>
-              <div style="display: flex; gap: 16px; justify-content: center;">
-                <button id="ai-deny" style="padding: 12px 24px; border: 2px solid #e0e0e0; background: white; border-radius: 8px; cursor: pointer; font-size: 15px; font-weight: 500; color: #666; transition: all 0.2s;">Cancel</button>
-                <button id="ai-allow" style="padding: 12px 24px; border: none; background: linear-gradient(135deg, #007bff, #0056b3); color: white; border-radius: 8px; cursor: pointer; font-size: 15px; font-weight: 500; box-shadow: 0 4px 12px rgba(0,123,255,0.3); transition: all 0.2s;">Enable AI</button>
-              </div>
-            </div>
-          `;
-          
-          document.body.appendChild(modal);
-          
-          const allowBtn = modal.querySelector('#ai-allow');
-          const denyBtn = modal.querySelector('#ai-deny');
-          
-          allowBtn.onmouseover = () => allowBtn.style.transform = 'translateY(-2px)';
-          allowBtn.onmouseout = () => allowBtn.style.transform = 'translateY(0)';
-          denyBtn.onmouseover = () => { denyBtn.style.borderColor = '#ccc'; denyBtn.style.color = '#333'; };
-          denyBtn.onmouseout = () => { denyBtn.style.borderColor = '#e0e0e0'; denyBtn.style.color = '#666'; };
-          
-          allowBtn.onclick = async () => {
-            try {
-              await chrome.storage.local.set({ aiEnabled: true, aiConsentGranted: true });
-              document.body.removeChild(modal);
-              showToast('AI features enabled successfully!', 'success');
-              resolve(true);
-            } catch (e) {
-              console.error('Failed to enable AI:', e);
-              showToast('Failed to enable AI features', 'error');
-              resolve(false);
-            }
-          };
-          
-          denyBtn.onclick = () => {
-            document.body.removeChild(modal);
-            resolve(false);
-          };
-          
-          modal.onclick = (e) => {
-            if (e.target === modal) {
-              document.body.removeChild(modal);
-              resolve(false);
-            }
-          };
-        });
-      }
-
-      async function applyAiUiState(shadowRoot) {
-        const allowed = await isAiAllowed();
-        const proc = shadowRoot.getElementById('wte-process'); 
-        if (proc) {
-          proc.disabled = !allowed;
-          proc.style.opacity = allowed ? '1' : '0.6';
-          proc.title = allowed ? 'Process selected captures with LLM' : 'Click to enable AI features';
-        }
-        
-        shadowRoot.querySelectorAll('.capBtn.capProc').forEach(btn => { 
-          btn.disabled = !allowed; 
-          btn.style.opacity = allowed ? '1' : '0.6';
-          btn.title = allowed ? 'Process this capture with LLM' : 'Click to enable AI features'; 
-        });
-        
-        const hint = shadowRoot.getElementById('wte-ai-hint');
-        if (!allowed) {
-          if (!hint) {
-            const p = document.createElement('div'); 
-            p.id='wte-ai-hint'; 
-            p.className='muted'; 
-            p.style.cssText = 'padding: 12px; background: #f8f9fa; border: 1px solid #e9ecef; border-radius: 8px; margin: 8px 0; text-align: center;';
-            p.innerHTML = `
-              <div style="font-size: 24px; margin-bottom: 8px;">🔒</div>
-              <div>AI features are disabled. <button id="enable-ai-btn" style="background: #007bff; color: white; border: none; padding: 4px 8px; border-radius: 4px; cursor: pointer; font-size: 12px;">Enable Now</button></div>
-            `;
-            shadowRoot.querySelector('.body')?.insertBefore(p, shadowRoot.querySelector('.pages'));
-            
-            p.querySelector('#enable-ai-btn').onclick = async () => {
-              const enabled = await showAiConsentModal();
-              if (enabled) {
-                await applyAiUiState(shadowRoot);
-              }
-            };
-          }
-        } else if (hint) { hint.remove(); }
-      }
-      async function putCaptureText(captureId, kind, text) {
+            async function putCaptureText(captureId, kind, text) {
         try {
           const db = await openDB();
           await new Promise((resolve, reject) => {
@@ -1367,6 +1771,19 @@
           });
         } catch (_) { return ''; }
       }
+      async function deleteCaptureText(captureId, kinds = ['raw','llm']) {
+        try {
+          const db = await openDB();
+          await Promise.all(kinds.map(kind => new Promise((resolve, reject) => {
+            const tx = db.transaction(DB_STORE, 'readwrite');
+            const store = tx.objectStore(DB_STORE);
+            const id = `${captureId}:${kind}`;
+            store.delete(id);
+            tx.oncomplete = () => resolve();
+            tx.onerror = () => reject(tx.error);
+          })));
+        } catch (_) {}
+      }
       async function loadAll() {
         try { const { [STORAGE_KEY]: data } = await chrome.storage.local.get([STORAGE_KEY]); return data || { pages:{}, order:[] }; } catch { return { pages:{}, order:[] }; }
       }
@@ -1379,20 +1796,6 @@
       function hashText(str) {
         let h = 5381; for (let i = 0; i < str.length; i++) { h = ((h << 5) + h) ^ str.charCodeAt(i); }
         return (h >>> 0).toString(36);
-      }
-      // Allowed target university domains
-      function isAllowedDomain(u){
-        try {
-          const h = new URL(u).hostname.toLowerCase();
-          return /(sharda\.ac\.in|amity\.edu|galgotiasuniversity\.edu\.in|niu\.edu\.in|noidainternationaluniversity\.com)/.test(h);
-        } catch(_) { return false; }
-      }
-      async function sha256Hex(str){
-        try {
-          const enc = new TextEncoder().encode(str);
-          const buf = await crypto.subtle.digest('SHA-256', enc);
-          return Array.from(new Uint8Array(buf)).map(b=>b.toString(16).padStart(2,'0')).join('');
-        } catch(_) { return 'hash_error'; }
       }
       function stableSignature(text){
         const t = (text||'').toLowerCase().replace(/[0-9]+/g,'#').replace(/\s+/g,' ').trim();
@@ -1422,38 +1825,48 @@
           setTimeout(() => { el.style.display = 'none'; }, 300);
         }, ms);
       }
-      async function addCaptureFor(url, title, label, rawText) {
+      async function addCaptureFor(url, title, label, rawText, opts = {}) {
         const id = Math.random().toString(36).slice(2,10);
         const k = keyForUrl(url);
         const db = await loadAll();
+        const force = !!(opts && opts.force);
         if (!db.pages[k]) { db.pages[k] = { url, title: title||'', captures: [], createdAt: nowIso(), updatedAt: nowIso(), pageSig: '' }; db.order.unshift(k); }
         const sig = hashText(rawText || '');
         const sig2 = stableSignature(rawText||'');
         const exists = (db.pages[k].captures||[]).some(c => c.sig === sig || c.sig2 === sig2);
-        if (exists) { showToast('Duplicate capture ignored'); return { db, id: null, k }; }
+        if (!force && exists) { showToast('Duplicate capture ignored', 'warning', 4000); return { db, id: null, k }; }
+        // Global capture-level duplicate check across all pages/sites
+        try {
+          const gmem = await loadGlobalMem();
+          const seenCaps = gmem.caps || {};
+          if (!force && (seenCaps[sig] || seenCaps[sig2])) { showToast('Global duplicate ignored', 'warning', 4000); return { db, id: null, k }; }
+        } catch (_) {}
         // Prevent a duplicate page group after reload by maintaining a pageSig across sessions
         const pageSig = db.pages[k].pageSig || hashText((document.title||'') + '|' + location.pathname);
         db.pages[k].pageSig = pageSig;
-        const preview = (rawText||'').slice(0, 2000);
-        // Store full rawText so later LLM processing has access (bug fix)
-        db.pages[k].captures.push({ id, label: label || `Capture ${db.pages[k].captures.length+1}`, preview, rawText: rawText || '', sig, sig2, timestamp: nowIso(), selected: true });
+        const preview = (rawText||'').slice(0, 10000);
+        const len = (rawText||'').length;
+        db.pages[k].captures.push({ id, label: label || `Capture ${db.pages[k].captures.length+1}`, preview, len, sig, sig2, timestamp: nowIso(), selected: true });
         db.pages[k].updatedAt = nowIso();
         await saveAll(db);
         await putCaptureText(id, 'raw', rawText||'');
+        // Record capture signatures globally
+        try {
+          const gmem = await loadGlobalMem();
+          const seenCaps = gmem.caps || {};
+          seenCaps[sig] = { ts: nowIso(), url };
+          seenCaps[sig2] = { ts: nowIso(), url };
+          gmem.caps = seenCaps;
+          await saveGlobalMem(gmem);
+        } catch (_) {}
         return { db, id, k };
       }
-      async function setCaptureLLM(url, capId, llmText) {
-        const k = keyForUrl(url); const db = await loadAll(); const page = db.pages[k]; if (!page) return;
-        const cap = page.captures.find(c=>c.id===capId); if (!cap) return; cap.llmText = llmText; page.updatedAt = nowIso(); await saveAll(db);
-      }
-      async function setPageLLM(url, llmText) { const k=keyForUrl(url); const db=await loadAll(); const page=db.pages[k]; if(!page) return; page.combinedLLM = llmText; page.updatedAt=nowIso(); await saveAll(db); }
-
-      // UI render
+            
+      // UI render (programmatic DOM creation to avoid injection vulnerabilities)
       async function render() {
         const box = shadow.getElementById('wte-pages');
         if (!box) return;
         const db = await loadAll();
-        // Group pages by domain
         const byDomain = new Map();
         const keys = db.order.length ? db.order : Object.keys(db.pages);
         for (const k of keys) {
@@ -1466,104 +1879,366 @@
         const frag = document.createDocumentFragment();
         for (const [host, list] of byDomain.entries()) {
           const domainDiv = document.createElement('div');
+          domainDiv.className = 'domain-group';
+          const isDomainCollapsed = list.length > 0 && list.every(({ p }) => p.collapsed);
+          if (isDomainCollapsed) {
+            domainDiv.classList.add('collapsed');
+          }
           const allCaps = list.flatMap(x => x.p.captures || []);
-          const domainAllSelected = allCaps.length>0 && allCaps.every(c=>!!c.selected);
-          domainDiv.innerHTML = `<div class="pageHead"><div style="display:flex;align-items:center;gap:6px"><strong>${host}</strong></div><div style="display:flex;gap:8px;align-items:center"><label class="muted"><input type="checkbox" class="domain-select" data-domain="${host}" ${domainAllSelected?'checked':''}/> Select all</label><div class="muted">${allCaps.length} items</div></div></div>`;
-          for (const {k, p} of list) {
-            const allSelected = (p.captures||[]).length>0 && (p.captures||[]).every(c=>!!c.selected);
-            const page = document.createElement('div'); page.className = 'page' + (p.collapsed? ' collapsed':'');
-            page.innerHTML = `<div class="pageHead"><div style="display:flex;align-items:center;gap:6px"><button class="caret" data-toggle="${k}">${p.collapsed?'▸':'▾'}</button><input type="checkbox" class="page-select" data-page="${k}" ${allSelected?'checked':''}/><div class="pageTitle" title="${p.url}">${p.title || p.url}</div></div><div style="display:flex;gap:6px;align-items:center"><div class="muted">${(p.captures||[]).length} items</div><button class="capBtn page-del" data-page="${k}">✕</button></div></div>`;
-            const caps = document.createElement('div'); caps.className = 'caps';
-            (p.captures||[]).forEach(c => {
-              const row = document.createElement('div'); row.className = 'cap';
-            const checked = c.selected ? 'checked' : '';
-            const sizeHint = (c.preview||'').length;
-            row.innerHTML = `<input type="checkbox" ${checked} data-page="${k}" data-id="${c.id}"/> <div class="capLabel" title="${c.label}">${c.label}</div> <div class="muted">${sizeHint} chars${c.llmText? ', LLM ✓':''}</div> <div class="capBtns"><button class="capBtn capProc" data-page="${k}" data-id="${c.id}">LLM</button><button class="capBtn capDel" data-page="${k}" data-id="${c.id}">✕</button><div class="capSpin" id="spin_${c.id}"></div></div>`;
-              caps.appendChild(row);
-            });
-            page.appendChild(caps);
-            domainDiv.appendChild(page);
+          const domainAllSelected = allCaps.length > 0 && allCaps.every(c => !!c.selected);
+
+          const domainHead = document.createElement('div');
+          domainHead.className = 'pageHead';
+          const strong = document.createElement('strong');
+          strong.textContent = host;
+          const d1 = document.createElement('div');
+          d1.style.cssText = 'display:flex;align-items:center;gap:6px';
+
+          const domainCaret = document.createElement('button');
+          domainCaret.className = 'caret';
+          domainCaret.dataset.toggleDomain = host;
+          domainCaret.textContent = isDomainCollapsed ? '▸' : '▾';
+
+          d1.appendChild(domainCaret);
+          d1.appendChild(strong);
+          const d2 = document.createElement('div');
+          d2.style.cssText = 'display:flex;gap:8px;align-items:center';
+          const label = document.createElement('label');
+          label.className = 'muted';
+          const chk = document.createElement('input');
+          chk.type = 'checkbox';
+          chk.className = 'domain-select';
+          chk.dataset.domain = host;
+          chk.checked = domainAllSelected;
+          label.appendChild(chk);
+          label.append(' Select all');
+          const itemsMuted = document.createElement('div');
+          itemsMuted.className = 'muted';
+          itemsMuted.textContent = `${allCaps.length} items`;
+          d2.appendChild(label);
+          d2.appendChild(itemsMuted);
+          domainHead.appendChild(d1);
+          domainHead.appendChild(d2);
+          domainDiv.appendChild(domainHead);
+
+          if (!isDomainCollapsed) {
+            for (const { k, p } of list) {
+              const allSelected = (p.captures || []).length > 0 && (p.captures || []).every(c => !!c.selected);
+              const page = document.createElement('div');
+              page.className = 'page' + (p.collapsed ? ' collapsed' : '');
+
+              const pageHead = document.createElement('div');
+              pageHead.className = 'pageHead';
+              const ph1 = document.createElement('div');
+              ph1.style.cssText = 'display:flex;align-items:center;gap:6px';
+              const caret = document.createElement('button');
+              caret.className = 'caret';
+              caret.dataset.toggle = k;
+              caret.textContent = p.collapsed ? '▸' : '▾';
+              const pageChk = document.createElement('input');
+              pageChk.type = 'checkbox';
+              pageChk.className = 'page-select';
+              pageChk.dataset.page = k;
+              pageChk.checked = allSelected;
+              const pageTitle = document.createElement('div');
+              pageTitle.className = 'pageTitle';
+              pageTitle.title = p.url;
+              pageTitle.textContent = p.title || p.url;
+              ph1.appendChild(caret);
+              ph1.appendChild(pageChk);
+              ph1.appendChild(pageTitle);
+
+              const ph2 = document.createElement('div');
+              ph2.style.cssText = 'display:flex;gap:6px;align-items:center';
+              const pageItemsMuted = document.createElement('div');
+              pageItemsMuted.className = 'muted';
+              pageItemsMuted.textContent = `${(p.captures || []).length} items`;
+              const delBtn = document.createElement('button');
+              delBtn.className = 'capBtn page-del';
+              delBtn.dataset.page = k;
+              delBtn.textContent = '✕';
+              ph2.appendChild(pageItemsMuted);
+              ph2.appendChild(delBtn);
+
+              pageHead.appendChild(ph1);
+              pageHead.appendChild(ph2);
+              page.appendChild(pageHead);
+
+              const caps = document.createElement('div');
+              caps.className = 'caps';
+              if (!p.collapsed) {
+                (p.captures || []).forEach(c => {
+                  const row = document.createElement('div');
+                row.className = 'cap';
+                const capChk = document.createElement('input');
+                capChk.type = 'checkbox';
+                capChk.checked = !!c.selected;
+                capChk.dataset.page = k;
+                capChk.dataset.id = c.id;
+                const capLabel = document.createElement('div');
+                capLabel.className = 'capLabel';
+                capLabel.title = c.label;
+                capLabel.textContent = c.label;
+                const sizeHint = document.createElement('div');
+                sizeHint.className = 'muted';
+                sizeHint.textContent = `${c.len || (c.preview || '').length} chars`;
+                const capBtns = document.createElement('div');
+                capBtns.className = 'capBtns';
+                const capDelBtn = document.createElement('button');
+                capDelBtn.className = 'capBtn capDel';
+                capDelBtn.dataset.page = k;
+                capDelBtn.dataset.id = c.id;
+                capDelBtn.textContent = '✕';
+                capBtns.appendChild(capDelBtn);
+                row.appendChild(capChk);
+                row.appendChild(capLabel);
+                row.appendChild(sizeHint);
+                row.appendChild(capBtns);
+                caps.appendChild(row);
+                });
+              }
+              page.appendChild(caps);
+              domainDiv.appendChild(page);
+            }
           }
           frag.appendChild(domainDiv);
         }
-        box.innerHTML = ''; box.appendChild(frag);
-        // Sync top-level select-all checkbox state
+        box.innerHTML = '';
+        box.appendChild(frag);
         const topSel = shadow.getElementById('wte-select-all');
         if (topSel) {
           const total = Array.from(box.querySelectorAll('input[type="checkbox"][data-page][data-id]')).length;
           const selected = Array.from(box.querySelectorAll('input[type="checkbox"][data-page][data-id]:checked')).length;
-          topSel.checked = total>0 && selected === total;
+          topSel.checked = total > 0 && selected === total;
         }
       }
 
       // Extraction for sider
-      async function captureNow() {
+      async function captureNow(opts = {}) {
+        const overlay = shadow.getElementById('wte-overlay');
         try {
+          if (overlay) overlay.style.display = 'flex';
           showToast('Capturing page content...', 'info', 1500);
           const label = shadow.getElementById('wte-label').value.trim() || `Tab ${Date.now().toString().slice(-4)}`;
-          const url = window.location.href; 
+          const url = window.location.href;
           const title = document.title || new URL(url).hostname;
-          if (!isAllowedDomain(url)) {
-            showToast('Domain not in allowlist (skipped)', 'warning');
-            return;
-          }
-          // Fast capture: DOM-order text including hidden
-          const text = extractDomOrderedText(true) || '';
-          if (!text || text.length < 50) {
-            showToast('No meaningful content found to capture', 'warning');
-            return;
+          
+          // If current page is a PDF viewer or embeds PDFs, try background PDF extraction first
+          try {
+            // 1) Built-in viewer (chrome-extension://.../pdf-viewer/index.html?src=...)
+            const viewerPdf = derivePdfUrlFromLocation();
+            if (viewerPdf) {
+              const resp = await chrome.runtime.sendMessage({ type: 'extractPdfText', url: viewerPdf });
+              if (resp && resp.ok && resp.text && resp.text.trim().length > 0) {
+                const { id } = await addCaptureFor(url, title, label + ' (PDF)', resp.text, opts);
+                await render();
+                if (id) {
+                  showToast('Captured PDF text successfully!', 'success');
+                }
+                return;
+              }
+            }
+            // 2) Embedded/linked PDFs present on the page are no longer auto-extracted
+            // To avoid false positives, we only extract when the current tab is an actual PDF viewer.
+          } catch (e) {
+            console.warn('PDF extraction attempt failed:', e?.message || e);
           }
           
-          await addCaptureFor(url, title, label, text);
+          // Dynamic capture with site-specific strategy for Sharda course-fee
+          let text = '';
+          try {
+            await preloadLazyContent();
+            let dyn = '';
+            if (isShardaCourseFeePage()) {
+              dyn = await scrapeShardaCourseFees({ maxPages: 50 });
+            } else {
+              await sweepTabsAndAccordions();
+              dyn = await collectDynamicAllText(50);
+            }
+            const domMain = extractDomOrderedTextWithin(findMainContentContainer(), true) || '';
+            console.log('[WTE][capture] lengths', { dynLen: (dyn||'').length, domLen: domMain.length });
+            text = (dyn && dyn.length >= 200) ? dyn : domMain;
+          } catch (e) {
+            console.warn('[WTE][capture] primary extraction failed, fallback to extractDomOrderedText', e?.message || e);
+            text = extractDomOrderedText(true) || '';
+          }
+          if (!text || text.length < 50) {
+            // Fallbacks: visible text nodes, then raw innerText dump
+            try {
+              const visibleText = (function collectAllVisibleText(){
+                try {
+                  const walker = document.createTreeWalker(document.body, NodeFilter.SHOW_TEXT, {
+                    acceptNode(node) {
+                      const s = (node.nodeValue || '').replace(/\s+/g,' ').trim();
+                      if (!s) return NodeFilter.FILTER_REJECT;
+                      const el = node.parentElement;
+                      if (!el) return NodeFilter.FILTER_REJECT;
+                      if (/^(script|style|noscript|iframe|object|embed)$/i.test(el.tagName)) return NodeFilter.FILTER_REJECT;
+                      const cs = getComputedStyle(el);
+                      if (cs.display === 'none' || cs.visibility === 'hidden' || cs.opacity === '0') return NodeFilter.FILTER_REJECT;
+                      return NodeFilter.FILTER_ACCEPT;
+                    }
+                  });
+                  const parts = [];
+                  let n;
+                  while ((n = walker.nextNode())) {
+                    const t = (n.nodeValue || '').replace(/\s+/g,' ').trim();
+                    if (t) parts.push(t);
+                    if (parts.length > 8000) break; // guard
+                  }
+                  return cleanText(parts.join('\n'));
+                } catch (_) {
+                  return '';
+                }
+              })();
+              if (visibleText && visibleText.length >= 20) {
+                console.log('[WTE][capture] using visibleText fallback', { len: visibleText.length });
+                text = visibleText;
+              } else {
+                const rawDump = ((document.body && (document.body.innerText || document.body.textContent)) || '').replace(/\r\n?/g,'\n');
+                const rawClean = cleanText(rawDump);
+                if (rawClean && rawClean.length >= 20) {
+                  console.log('[WTE][capture] using rawDump fallback', { len: rawClean.length });
+                  text = rawClean;
+                } else {
+                  const msg = `No meaningful content found to capture (dyn/dom/visible/raw all short)`;
+                  console.warn('[WTE][capture] ' + msg);
+                  showToast(msg, 'warning');
+                  return;
+                }
+              }
+            } catch (err) {
+              const rawDump = ((document.body && (document.body.innerText || document.body.textContent)) || '').replace(/\r\n?/g,'\n');
+              const rawClean = cleanText(rawDump);
+              if (rawClean && rawClean.length >= 20) {
+                console.log('[WTE][capture] using rawDump fallback after error', err?.message || err);
+                text = rawClean;
+              } else {
+                showToast('No meaningful content found to capture', 'warning');
+                return;
+              }
+            }
+          }
+
+          const { id } = await addCaptureFor(url, title, label, text, opts);
           shadow.getElementById('wte-label').value = '';
           await render();
-          showToast(`Captured "${label}" successfully!`, 'success');
+          if (id) {
+            showToast(`Captured "${label}" successfully!`, 'success');
+          }
         } catch (error) {
           console.error('Capture failed:', error);
           showToast(`Capture failed: ${error.message}`, 'error');
+        } finally {
+          if (overlay) overlay.style.display = 'none';
         }
       }
 
-      // LLM processing
-      async function processSelectedLLM() {
-        // Check AI consent first
-        const allowed = await isAiAllowed();
-        if (!allowed) {
-          const enabled = await showAiConsentModal();
-          if (!enabled) {
-            showToast('AI features are required for LLM processing', 'warning');
-            return;
-          }
-          await applyAiUiState(shadow);
-        }
-        
-        const checks = Array.from(shadow.querySelectorAll('input[type="checkbox"]:checked'));
-        if (!checks.length) { showToast('Nothing selected'); return; }
-        const byPage = new Map();
-        const db = await loadAll();
-        for (const el of checks) {
-          const pg = db.pages[el.dataset.page]; if (!pg) continue;
-          const cap = pg.captures.find(c=>c.id===el.dataset.id); if (!cap) continue;
-          const arr = byPage.get(pg) || []; arr.push({ cap, pageKey: el.dataset.page }); byPage.set(pg, arr);
-        }
-        for (const [pg, items] of byPage.entries()) {
-          if (!isAllowedDomain(pg.url)) {
-            showToast('Skipped non-allowlisted domain for LLM');
-            continue;
-          }
-          // Dedupe lines against site memory
-          const rawCombined = items.map(x => x.cap.rawText).join('\n');
-          const deduped = await dedupeAgainstSite(pg.url, rawCombined);
-          try {
-            const out = await organizeChunked(pg.title || 'Page', pg.url, deduped);
-            if (out) {
-              for (const it of items) { await setCaptureLLM(pg.url, it.cap.id, out); }
-              await setPageLLM(pg.url, out);
-              await updateSiteMemory(pg.url, out);
+            // Post-process cleaner to strip boilerplate from RAW text on download
+      function postProcessAndCleanText(url, text) {
+        try {
+          if (!text || !text.trim()) return text || '';
+          const host = (() => { try { return new URL(url).hostname.replace(/^www\./i,''); } catch (_) { return ''; } })();
+          const isSharda = /sharda\.ac\.in$/i.test(host);
+          const isNIU = /niu\.edu\.in$/i.test(host);
+
+          const keepCourseRe = /\b(B\.?Tech|B\.?Sc|B\.?A|B\.?Com|BCA|BBA|M\.?Tech|M\.?Sc|MBA|MCA|LLB|LL\.?M|Pharm\.?|Physiotherapy|Optometry|Zoology|Chemistry|Physics|Biology|Biotechnology|Microbiology|Forensic|Nursing|Journalism|Design|Architecture|Economics|Political Science|History|Sociology|Computer Science|Data Science)\b/i;
+          const keepFeeRe = /(fee|fees|semester|sem|year|yearly|annual|tuition|₹|rs\.?|amount|enquire now|1st|2nd|3rd|4th|5th|6th|7th|8th|9th|10th)/i;
+          const numericInfoRe = /[:|]\s*\d|₹|\d{2,}/;
+
+          // Obvious boilerplate headings/sections to drop
+          const dropSectionStarts = [
+            'programme 2025-26','schools','academic info','quick links','applying to sharda','suat 2025','study abroad',
+            'placements','campus life','about','connect','international','for students','admissions','other links',
+            'follow sharda university','subscribe newsletter','no. of visitors','disclaimer','privacy policy','terms of use',
+            'virtual tour','plot no.','copyright','©','nba'
+          ];
+          const dropSectionExact = new Set([
+            'A+','A-','A','Programme 2025-26','Schools','Academic Info','Quick Links','Admissions','Connect','International','For Students',
+            'APPLY NOW','Apply Now','Apply Now 2025'
+          ].map(s => s.toLowerCase()));
+
+          // Site-specific noisy tokens
+          const dropShardaTokens = [
+            'sharda school','sharda university','suat','world is here','fm radio: suno sharda',
+            'the shardans','account help desk','digilocker','webmail','paramarsh'
+          ];
+          const dropNIUTokens = [
+            'noida international university','niu','admission helpline','virtual tour','iqac','iic','nisp'
+          ];
+
+          // Script and widget injections
+          const dropCodeRe = /(window\.\$superbot|agent\.js|_sb_visitor|<script|www-widgetapi\.js)/i;
+
+          const lines = text.split(/\r?\n/);
+          const seen = new Set();
+          const out = [];
+          let blankRun = 0;
+
+          const looksPaginationBullet = (s) => /^•?\s*(?:«|»|…|\.\.\.|[0-9]{1,3})\s*$/.test(s);
+          const looksMenuOnly = (s) => {
+            const w = s.replace(/•/g,'').trim();
+            if (!w) return true;
+            const hasDigit = /\d/.test(w);
+            if (hasDigit) return false;
+            // short, mostly single tokens often are menus
+            const tokens = w.split(/\s+/);
+            return tokens.length <= 3 && !keepCourseRe.test(w) && !keepFeeRe.test(w);
+          };
+
+          for (let raw of lines) {
+            let s = (raw || '').trim();
+            if (!s) { blankRun++; if (blankRun <= 1) out.push(''); continue; }
+            blankRun = 0;
+
+            const lower = s.toLowerCase();
+
+            // Drop inline script/widget noise
+            if (dropCodeRe.test(s)) continue;
+
+            // Drop pagination bullets like "• 1", "• …"
+            if (looksPaginationBullet(s)) continue;
+
+            // Drop obvious boilerplate sections
+            if (dropSectionExact.has(lower)) continue;
+            if (dropSectionStarts.some(k => lower.startsWith(k))) continue;
+
+            // Drop site-specific boilerplate tokens
+            if (isSharda && dropShardaTokens.some(t => lower.includes(t))) {
+              // keep if this line still looks like fee info
+              if (!keepFeeRe.test(s) && !numericInfoRe.test(s)) continue;
             }
-          } catch (_) {}
+            if (isNIU && dropNIUTokens.some(t => lower.includes(t))) {
+              if (!keepFeeRe.test(s) && !numericInfoRe.test(s)) continue;
+            }
+
+            // Drop long navigation link clusters (menu-looking lines without digits/fees)
+            if (looksMenuOnly(s)) {
+              // keep if obviously a program/course or has colon with value
+              if (!(keepCourseRe.test(s) || /:/.test(s))) continue;
+            }
+
+            // Prefer keeping fee/program lines
+            const keep = keepFeeRe.test(s) || keepCourseRe.test(s) || numericInfoRe.test(s);
+            if (!keep) {
+              // heuristics: if line is very long and not boilerplate, keep
+              if (s.length < 20) continue;
+            }
+
+            // Deduplicate lines globally within this file
+            const key = s.toLowerCase();
+            if (seen.has(key)) continue;
+            seen.add(key);
+
+            out.push(s);
+          }
+
+          // Collapse excessive blank lines
+          const cleaned = out.join('\n').replace(/\n{3,}/g, '\n\n').trim();
+          return cleaned || text;
+        } catch (_) {
+          return text;
         }
-        await render();
       }
 
       // Downloads
@@ -1588,19 +2263,14 @@
           const combined = (which === 'raw')
             ? pieces.join('\n')
             : (pg.combinedLLM && pieces.length > 0 ? pg.combinedLLM : pieces.join('\n'));
-          // For raw: no site dedupe to avoid empty files; For LLM: dedupe but fallback if emptied
+          // Apply post-processing cleanup for RAW; For LLM: dedupe but fallback if emptied
           let cleaned = combined;
-          if (which === 'llm') {
-            const ded = await dedupeAgainstSite(pg.url, combined, false);
-            cleaned = ded && ded.trim().length ? ded : combined;
-          }
+          if (which === 'raw') {
+            cleaned = postProcessAndCleanText(pg.url, combined);
+                    }
           // Ensure Source line present
-          const hash = await sha256Hex(cleaned);
           if (!/\bSource:\s*https?:\/\//i.test(cleaned)) {
             cleaned = cleaned.trim() + `\n\nSource: ${pg.url}`;
-          }
-          if (!/HASH:\s*sha256:[0-9a-f]{64}/i.test(cleaned)) {
-            cleaned = cleaned.trim() + `\nHASH: sha256:${hash}`;
           }
           const ts = new Date().toISOString().replace(/[:T]/g,'-').slice(0,19);
           const slug = (pg.title || new URL(pg.url).pathname).slice(0,80).replace(/[^\w\-]+/g,'_');
@@ -1611,9 +2281,9 @@
           } catch (downloadErr) {
             console.warn('Background download failed, trying direct:', downloadErr);
             try {
-              const blob = new Blob([cleaned], { type: 'text/plain' });
-              const a = document.createElement('a'); a.href = URL.createObjectURL(blob); a.download = name; a.style.display='none';
-              document.body.appendChild(a); a.click(); setTimeout(()=>{ URL.revokeObjectURL(a.href); a.remove(); }, 2000);
+              const dataUrl = 'data:text/plain;charset=utf-8,' + encodeURIComponent(cleaned);
+              const a = document.createElement('a'); a.href = dataUrl; a.download = name; a.style.display='none';
+              document.body.appendChild(a); a.click(); setTimeout(()=>{ a.remove(); }, 2000);
             } catch (e) { 
               console.error('Direct download also failed:', e);
               throw new Error('Download failed: ' + e.message);
@@ -1627,24 +2297,69 @@
       }
       }
 
-      shadow.getElementById('wte-add').addEventListener('click', captureNow);
-      shadow.getElementById('wte-process').addEventListener('click', processSelectedLLM);
-      shadow.getElementById('wte-dl-raw').addEventListener('click', () => downloadSelected('raw'));
-      shadow.getElementById('wte-dl-llm').addEventListener('click', () => downloadSelected('llm'));
-      shadow.getElementById('wte-select-all').addEventListener('change', async (e) => {
+      shadow.getElementById('wte-add').addEventListener('click', (e) => captureNow({ force: !!e.altKey }));
+            shadow.getElementById('wte-dl-raw').addEventListener('click', () => downloadSelected('raw'));
+            shadow.getElementById('wte-select-all').addEventListener('change', async (e) => {
         const db = await loadAll(); const checked = !!e.target.checked;
         Object.values(db.pages).forEach(p => (p.captures||[]).forEach(c => { c.selected = checked; }));
         await saveAll(db); await render();
       });
-      shadow.getElementById('wte-settings').addEventListener('click', () => chrome.runtime.openOptionsPage());
+      shadow.getElementById('wte-settings').addEventListener('click', async () => {
+        try {
+          const resp = await chrome.runtime.sendMessage({ type: 'openOptionsPage' });
+          if (!resp || !resp.ok) throw new Error(resp?.error || 'openOptionsPage failed');
+        } catch (e) {
+          console.error('Failed to open options page:', e);
+          showToast('Could not open Settings', 'error');
+        }
+      });
       shadow.getElementById('wte-clear-site').addEventListener('click', async () => {
         const db = await loadAll();
-        const host = location.hostname;
-        const keys = Object.keys(db.pages);
-        for (const k of keys) { if (new URL(db.pages[k].url).hostname === host) { delete db.pages[k]; db.order = db.order.filter(x=>x!==k); } }
+        const host = location.hostname.replace(/^www\./i,'');
+        // Gather pages to remove
+        const toRemove = Object.keys(db.pages).filter(k => {
+          try { return new URL(db.pages[k].url).hostname.replace(/^www\./i,'') === host; } catch (_) { return false; }
+        });
+        // Cleanup IDB and global mem for their captures
+        try {
+          const gmem = await loadGlobalMem();
+          for (const k of toRemove) {
+            const p = db.pages[k];
+            if (p && Array.isArray(p.captures)) {
+              for (const c of p.captures) {
+                try { await deleteCaptureText(c.id); } catch (_) {}
+                if (c.sig && gmem.caps && gmem.caps[c.sig]) {
+                  delete gmem.caps[c.sig];
+                }
+              }
+            }
+            delete db.pages[k];
+            db.order = db.order.filter(x=>x!==k);
+          }
+          await saveGlobalMem(gmem);
+        } catch (_) {
+          for (const k of toRemove) {
+            delete db.pages[k];
+            db.order = db.order.filter(x=>x!==k);
+          }
+        }
         await saveAll(db);
         await chrome.storage.local.remove(siteKey(location.href));
         await render();
+      });
+
+      // Reset global duplicate memory (clears dedupe signatures)
+      const resetBtn = document.createElement('button'); resetBtn.className='btn'; resetBtn.textContent='Reset mem'; resetBtn.style.marginLeft='6px'; resetBtn.title='Clear global duplicate memory';
+      shadow.querySelector('.toolbar')?.appendChild(resetBtn);
+      resetBtn.addEventListener('click', async () => {
+        try {
+          const gmem = await loadGlobalMem();
+          gmem.caps = {};
+          await saveGlobalMem(gmem);
+          showToast('Global duplicate memory cleared', 'success');
+        } catch (e) {
+          showToast('Failed to clear memory', 'error');
+        }
       });
 
       // Remove duplicate chapters across all sites/pages
@@ -1693,55 +2408,85 @@
       shadow.getElementById('wte-pages').addEventListener('click', async (e) => {
         const t = e.target; if (!(t instanceof Element)) return;
         if (t.classList.contains('caret')) {
-          const k = t.dataset.toggle; const db = await loadAll(); const p = db.pages[k]; if (!p) return;
-          p.collapsed = !p.collapsed; await saveAll(db); await render();
+          const domain = t.dataset.toggleDomain;
+          const pageKey = t.dataset.toggle;
+          const db = await loadAll();
+
+          if (domain) {
+            const keys = Object.keys(db.pages).filter(k => {
+              try {
+                return new URL(db.pages[k].url).hostname.replace(/^www\./i, '') === domain;
+              } catch (_) {
+                return false;
+              }
+            });
+            const isCollapsed = !db.pages[keys[0]].collapsed;
+            keys.forEach(k => {
+              db.pages[k].collapsed = isCollapsed;
+            });
+          } else if (pageKey) {
+            const p = db.pages[pageKey];
+            if (p) {
+              p.collapsed = !p.collapsed;
+            }
+          }
+
+          await saveAll(db);
+          await render();
           return;
         }
         if (t.classList.contains('page-del')) {
           const k = t.getAttribute('data-page');
-          const db = await loadAll(); delete db.pages[k]; db.order = db.order.filter(x=>x!==k); await saveAll(db); await render();
+          const db = await loadAll();
+          const p = db.pages[k];
+          // Cleanup IDB and global signatures for all captures in this page
+          try {
+            const gmem = await loadGlobalMem();
+            if (p && Array.isArray(p.captures)) {
+              for (const c of p.captures) {
+                try { await deleteCaptureText(c.id); } catch (_) {}
+                if (c.sig && gmem.caps && gmem.caps[c.sig]) {
+                  delete gmem.caps[c.sig];
+                }
+              }
+              await saveGlobalMem(gmem);
+            }
+          } catch (_) {}
+          delete db.pages[k];
+          db.order = db.order.filter(x=>x!==k);
+          await saveAll(db);
+          await render();
           return;
         }
         if (t.classList.contains('capDel')) {
           const k = t.getAttribute('data-page'); const id = t.getAttribute('data-id');
           const db = await loadAll(); const p = db.pages[k]; if (!p) return;
-          p.captures = (p.captures||[]).filter(c => c.id !== id); await saveAll(db); await render();
+          const removed = (p.captures || []).find(c => c.id === id);
+          p.captures = (p.captures||[]).filter(c => c.id !== id);
+          await saveAll(db);
+          // Cleanup IDB blobs
+          try { await deleteCaptureText(id); } catch (_) {}
+          // Cleanup global duplicate signatures
+          if (removed && (removed.sig || removed.sig2)) {
+            try {
+              const gmem = await loadGlobalMem();
+              if (removed.sig && gmem.caps && gmem.caps[removed.sig]) {
+                delete gmem.caps[removed.sig];
+              }
+              if (removed.sig2 && gmem.caps && gmem.caps[removed.sig2]) {
+                delete gmem.caps[removed.sig2];
+              }
+              await saveGlobalMem(gmem);
+            } catch (_) {}
+          }
+          await render();
           return;
         }
-        if (t.classList.contains('capProc')) {
-          // Check AI consent first
-          const allowed = await isAiAllowed();
-          if (!allowed) {
-            const enabled = await showAiConsentModal();
-            if (!enabled) {
-              showToast('AI features are required for LLM processing', 'warning');
-              return;
-            }
-            await applyAiUiState(shadow);
-          }
-          
-          const k = t.getAttribute('data-page'); const id = t.getAttribute('data-id'); const spin = shadow.getElementById(`spin_${id}`); if (spin) spin.style.display='inline-block';
-          const dbPre = await loadAll(); const pgPre = dbPre.pages[k]; if (!pgPre || !isAllowedDomain(pgPre.url)) { showToast('Domain not in allowlist', 'warning'); if (spin) spin.style.display='none'; return; }
-          const db = await loadAll(); const pg = db.pages[k]; if (!pg) return;
-          const cap = pg.captures.find(c=>c.id===id); if (!cap) return;
-          const deduped = await dedupeAgainstSite(pg.url, cap.rawText);
-          try {
-            const out = await organizeChunked(pg.title || 'Page', pg.url, deduped);
-            if (out) { await setCaptureLLM(pg.url, cap.id, out); await updateSiteMemory(pg.url, out); }
-            showToast('LLM processing completed!', 'success');
-          } catch(e) {
-            console.error('LLM processing failed:', e);
-            showToast('LLM processing failed: ' + (e.message || 'Unknown error'), 'error');
-          }
-          if (spin) spin.style.display='none'; await render();
-        }
-      });
+              });
 
       render();
-      applyAiUiState(shadow);
-      chrome.storage.onChanged.addListener((changes, area) => { if (area==='local' && changes[STORAGE_KEY]) render(); });
-      chrome.storage.onChanged.addListener((changes, area) => { if (area==='local' && (changes.aiEnabled || changes.aiConsentGranted)) applyAiUiState(shadow); });
-
+            chrome.storage.onChanged.addListener((changes, area) => { if (area==='local' && changes[STORAGE_KEY]) render(); });
+      
       // Maintain size on zoom (approximate)
       const baseDPR = window.devicePixelRatio || 1;
       function syncScale() {
@@ -1752,77 +2497,21 @@
       window.addEventListener('resize', syncScale, { passive: true });
       syncScale();
 
-      // Text dedupe helpers
-      function normLine(s){ return (s||'').toLowerCase().replace(/[^a-z0-9₹$€\.\-]+/gi,' ').replace(/\s+/g,' ').trim(); }
-      async function dedupeAgainstSite(url, text, update=true){
-        const mem = await loadSiteMem(url); const keep=[]; const keys=mem.keys||{};
-        for (const line of (text||'').split(/\n+/)) { const k = normLine(line); if (!k) continue; if (!keys[k]) { keep.push(line); if (update) keys[k]=1; } }
-        if (update) { mem.keys = keys; await saveSiteMem(url, mem); }
-        return keep.join('\n');
-      }
-
-      async function updateSiteMemory(url, text) { await dedupeAgainstSite(url, text, true); }
-
-      // LLM helpers (chunked)
-      function chunkText(text, max=12000) {
-        if (!text) return [];
-        const out=[]; let cur='';
-        for (const line of text.split(/\n/)) {
-          if ((cur + (cur? '\n':'') + line).length > max) { if (cur) out.push(cur); cur = line; }
-          else { cur += (cur? '\n':'') + line; }
-        }
-        if (cur) out.push(cur);
-        return out;
-      }
-      async function callLLM(prompt) {
+      
+      // Global memory across all sites (line-level) + capture-level signatures
+      const GLOBAL_MEM_KEY = 'wte_global_mem_v1';
+      async function loadGlobalMem(){
         try {
-          const doResp = await chrome.runtime.sendMessage({ type: 'llmOrganize', provider: 'do', prompt });
-          if (doResp && doResp.ok && doResp.text) return doResp.text;
-        } catch (_) {}
-        const ge = await chrome.runtime.sendMessage({ type: 'llmOrganize', provider: 'gemini', prompt });
-        if (ge && ge.ok && ge.text) return ge.text;
-        throw new Error('LLM calls failed');
+          const { [GLOBAL_MEM_KEY]: mem } = await chrome.storage.local.get([GLOBAL_MEM_KEY]);
+          return mem || { keys: {}, caps: {} };
+        } catch (_) { return { keys: {}, caps: {} }; }
       }
-      function buildStructuredPrompt(title, url, content) {
-        return `Return plain text ONLY. Do not fabricate. Extract ONLY data present in content.
-Sections (omit if absent) in this order:
-RANKING
-COURSES
-FEES
-ELIGIBILITY
-ADMISSION PROCESS
-SCHOLARSHIPS
-PAYMENTS
-VISA_FRRO
-CONTACT
-NOTES
-Each section header alone on its own line. Keep INR symbols and semester/year labels. Consolidate duplicates. End with:
-Source: ${url}
-
-TITLE: ${title}
-URL: ${url}
-
-CONTENT START
-${content}
-CONTENT END`;
+      async function saveGlobalMem(mem){
+        try { await chrome.storage.local.set({ [GLOBAL_MEM_KEY]: mem }); } catch (_) {}
       }
-      function buildSynthesisPrompt(title, url, segments) {
-        return `Synthesize the following cleaned segments into one concise, deduplicated plain-text output. Keep only factual, relevant info. End with 'Source: ${url}'.\n\nTitle: ${title}\nURL: ${url}\n\nSEGMENTS:\n${segments.map((s,i)=>`--- Segment ${i+1} ---\n${s}`).join('\n')}`;
-      }
-      async function organizeChunked(title, url, text) {
-        const chunks = chunkText(text, 12000);
-        if (chunks.length <= 1) {
-          return callLLM(buildStructuredPrompt(title, url, text));
-        }
-        const cleaned = [];
-        for (let i=0;i<chunks.length;i++) {
-          // sequential to avoid rate limits
-          const out = await callLLM(buildStructuredPrompt(title, url, chunks[i]));
-          cleaned.push(out);
-        }
-        return callLLM(buildSynthesisPrompt(title, url, cleaned));
-      }
-    } catch (e) {
+      
+      
+          } catch (e) {
       console.warn('Failed to init sider UI', e);
     }
   })();

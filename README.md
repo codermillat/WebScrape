@@ -1,6 +1,10 @@
-# Web Text Extractor with LLM Preprocessing 🚀
+# Web Text Extractor for Educational Research
 
-A powerful Chrome extension that extracts and preprocesses webpage content for LLM training and analysis. Features intelligent text cleaning, content categorization, and multiple output formats.
+This Chrome extension is a specialized tool developed as part of a research project focused on creating a highly contextual Question & Answer (Q&A) dataset for Bangladeshi students planning to study in India. The initial research targets four key universities: **Sharda University**, **Noida International University (NIU)**, **Amity University**, and **Galgotias University**.
+
+The primary function of this tool is to extract and preprocess web content into clean `.txt` files, which will serve as the foundation for generating a Q&A dataset to train or fine-tune Large Language Models (LLMs).
+
+This project is open-source under the MIT License. The repository is available at: [https://github.com/codermillat/WebScrape](https://github.com/codermillat/WebScrape)
 
 ## ✨ Features
 
@@ -183,29 +187,13 @@ The extension provides detailed analytics:
 | LLM | AI/ML model training | `.txt` |
 | JSON | Data analysis & integration | `.json` |
 
-## 🔧 Technical Implementation
+## 🔧 Project Documentation
 
-### JavaScript Text Processing
-- **Real-time processing** in the browser
-- **Zero external dependencies** for core functionality
-- **Memory-efficient** tokenization and filtering
-- **Modular architecture** for easy customization
+For a non-technical guide to the extension's workflow, please see:
+*   **[A Guide to the Data Pipeline](docs/RESEARCH_PIPELINE.md)**
 
-### Content Script Features
-- **DOM traversal** with intelligent filtering
-- **Visibility detection** to skip hidden content
-- **Ad/navigation blocking** using heuristic patterns
-- **Cross-origin safety** with proper permissions
-
-### Processing Pipeline
-1. **Raw Extraction**: Get all visible text from page
-2. **Initial Cleaning**: Remove URLs, emails, phone numbers
-3. **Duplicate Removal**: Filter repetitive content
-4. **Tokenization**: Break text into meaningful units
-5. **Stop Word Filtering**: Remove common/web words
-6. **Section Extraction**: Categorize content types
-7. **Key Phrase Identification**: Extract important topics
-8. **Format Generation**: Create output in selected format
+For a technical analysis of the codebase, including its current status and architectural observations, please see:
+*   **[Project Analysis](docs/PROJECT_ANALYSIS.md)**
 
 ## 💡 Use Cases
 
@@ -304,11 +292,12 @@ Contributions are welcome! Please:
 
 ## 🙏 Acknowledgments
 
-This extension incorporates text preprocessing techniques inspired by research in:
-- Natural Language Processing (NLP)
-- Large Language Model training methodologies  
-- Web content extraction best practices
+This project would not be possible without the incredible work of the open-source community. We extend our sincere gratitude to:
+
+-   **The Mozilla `pdf.js` Team**: For creating and maintaining the powerful `pdf.js` library, which enables robust text extraction from PDF documents directly in the browser. Their work is fundamental to this extension's ability to process academic documents and brochures.
+
+This extension also incorporates text preprocessing techniques inspired by established research in Natural Language Processing (NLP) and web content extraction best practices.
 
 ---
 
-**Ready to extract and preprocess web content for your LLM training? Install the extension and start processing! 🚀** 
+**This tool is dedicated to the goal of making educational information more accessible through technology. 🚀**
