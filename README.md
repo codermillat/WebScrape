@@ -1,10 +1,20 @@
 # Web Text Extractor for Educational Research
 
+[![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](https://opensource.org/licenses/MIT)
+[![Used By: SetForge Pipeline](https://img.shields.io/badge/Used%20By-SetForge%20Pipeline-blueviolet)](https://github.com/codermillat/SetForge)
+[![Generates: Hugging Face Dataset](https://img.shields.io/badge/%F0%9F%A4%97%20Hugging%20Face-Dataset-blue)](https://huggingface.co/datasets/millat/indian_university_guidance_for_bangladeshi_students)
+
 This Chrome extension is a specialized tool developed as part of a research project focused on creating a highly contextual Question & Answer (Q&A) dataset for Bangladeshi students planning to study in India. The initial research targets four key universities: **Sharda University**, **Noida International University (NIU)**, **Amity University**, and **Galgotias University**.
 
 The primary function of this tool is to extract and preprocess web content into clean `.txt` files, which will serve as the foundation for generating a Q&A dataset to train or fine-tune Large Language Models (LLMs).
 
 This project is open-source under the MIT License. The repository is available at: [https://github.com/codermillat/WebScrape](https://github.com/codermillat/WebScrape)
+
+## 🏆 Showcase: Powering the SetForge Research Project
+
+This extension served as the primary data collection tool for the **[SetForge](https://github.com/codermillat/SetForge)** research project, a sophisticated, multi-stage pipeline that transforms raw web data into a high-quality, instruction-formatted dataset.
+
+The data gathered using WebScrape was instrumental in generating the **[Indian University Guidance for Bangladeshi Students](https://huggingface.co/datasets/millat/indian_university_guidance_for_bangladeshi_students)** dataset, now publicly available on the Hugging Face Hub.
 
 ## ✨ Features
 
